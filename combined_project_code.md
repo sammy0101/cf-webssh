@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Tue Jun 23 18:56:40 UTC 2026
+Generated on: Tue Jun 23 19:02:00 UTC 2026
 
 ## File: README.md
 ````md
@@ -94,6 +94,7 @@ Generated on: Tue Jun 23 18:56:40 UTC 2026
 ## File: src/index.js
 ````js
 import { Client } from 'ssh2';
+import { Readable } from 'node:stream';
 import htmlContent from '../public/index.html';
 
 // 使用 WebCrypto 計算 SHA-256 雜湊值
@@ -430,7 +431,7 @@ export default {
       });
     }
 
-    // 6. WebSocket 單一通道 SFTP 全功能管理器 (重構升級)
+    // 6. WebSocket 單一通道 SFTP 全功能管理器 (防禦性優化)
     if (url.pathname.startsWith('/sftp/') && request.headers.get('Upgrade') === 'websocket') {
       const id = url.pathname.split('/').pop();
       const connectionVal = await env.WEBSSH_KV.get(`connection:${id}`);
@@ -457,7 +458,7 @@ export default {
             return;
           }
           sftpClient = sftp;
-          // 通知前端 SFTP 已成功初始化
+          // 通知前端 SFTP 已成功初始化，此時前端才可以發送指令
           server.send(JSON.stringify({ status: 'ready' }));
         });
       });
@@ -478,7 +479,6 @@ export default {
                 server.send(JSON.stringify({ status: 'error', message: `寫入失敗: ${err.message}` }));
                 return;
               }
-              // 回覆 ack 確認，前端收到後繼續傳送下一塊
               server.send(JSON.stringify({ status: 'upload_ack', written: chunk.length }));
             });
           } else {
@@ -490,6 +490,12 @@ export default {
         // B. 處理 JSON 格式之控制指令
         try {
           const msg = JSON.parse(event.data);
+
+          // 核心防禦性檢查：若 SFTP 尚未 Ready，拒絕所有前端控制指令
+          if (!sftpClient) {
+            server.send(JSON.stringify({ status: 'error', message: '遠端 SSH/SFTP 連線仍在建立中，請稍候。' }));
+            return;
+          }
 
           // 1. 取得檔案列表
           if (msg.action === 'list') {
@@ -569,7 +575,6 @@ export default {
             server.send(JSON.stringify({ status: 'download_meta', filename }));
 
             downloadStream.on('data', (chunk) => {
-              // 暫停讀取，防止資料堆積淹沒 WebSocket 與 Worker 記憶體
               downloadStream.pause();
               server.send(new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength));
             });
@@ -585,10 +590,10 @@ export default {
             });
           }
 
-          // 7. 請求下載下一個檔案區塊 (流量控制)
+          // 7. 請求下載下一個檔案區塊
           else if (msg.action === 'download_next') {
             if (downloadStream) {
-              downloadStream.resume(); // 恢復讀取下一塊
+              downloadStream.resume();
             }
           }
 
