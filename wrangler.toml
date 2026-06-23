@@ -1,0 +1,10 @@
+name = "cf-webssh"
+main = "dist/index.js"
+compatibility_date = "2024-05-01"
+compatibility_flags = [ "nodejs_compat" ]
+
+# 綁定您的 Cloudflare KV 命名空間
+# 在部署前，您需要先透過 CLI 或網頁控制台建立 KV，並在此填入對應的 id
+[[kv_namespaces]]
+binding = "WEBSSH_KV"
+id = "YOUR_KV_NAMESPACE_ID_HERE"
