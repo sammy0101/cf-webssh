@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Tue Jun 23 17:44:42 UTC 2026
+Generated on: Tue Jun 23 17:48:17 UTC 2026
 
 ## File: README.md
 ````md
@@ -228,7 +228,17 @@ export default {
           keepaliveInterval: 15000,
           keepaliveCountMax: 3,
           tryKeyboard: true,
-          // 移除 algorithms 設定，讓 ssh2 自動選擇兼容當前系統的最優演算法
+          // 設定金鑰交換演算法，主動排除 curve25519 以避免 Workers 相容性 Bug
+          algorithms: {
+            kex: [
+              'ecdh-sha2-nistp256',
+              'ecdh-sha2-nistp384',
+              'ecdh-sha2-nistp521',
+              'diffie-hellman-group14-sha256',
+              'diffie-hellman-group16-sha512',
+              'diffie-hellman-group-exchange-sha256'
+            ]
+          }
         };
 
         if (config.privateKey) {
@@ -237,7 +247,7 @@ export default {
           connectOptions.password = config.password;
         }
 
-        // 開始建立 SSH 連線（底層將透過 nodejs_compat 自動轉換為 cloudflare:sockets 的 TCP 連線）
+        // 開始建立 SSH 連線
         sshClient.connect(connectOptions);
       } catch (err) {
         server.send(`\r\n[SSH 初始化錯誤]: ${err.message}\r\n`);
