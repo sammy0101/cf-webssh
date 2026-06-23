@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cloudflare WebSSH 工作台</title>
+  <!-- CSS 依賴 -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css">
+  <!-- JS 依賴 -->
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans min-h-screen">
+
+  <div id="app" class="container mx-auto p-6 max-w-6xl">
+    <header class="mb-8 flex justify-between items-center border-b border-slate-800 pb-4">
+      <h1 class="text-2xl font-bold tracking-wider text-emerald-400">⚡ CF-WebSSH</h1>
+      <button onclick="showAddModal()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded font-medium transition">
+        新增伺服器
+      </button>
+    </header>
+
+    <!-- 伺服器列表 -->
+    <main>
+      <div id="connections-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <!-- 動態渲染清單 -->
+      </div>
+      <div id="empty-state" class="hidden text-center py-20 text-slate-500">
+        目前沒有儲存的伺服器，點擊右上角新增連線。
+      </div>
+    </main>
+  </div>
+
+  <!-- 新增/編輯 Modal -->
+  <div id="modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-40">
+    <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-lg shadow-2xl">
+      <h2 class="text-xl font-bold mb-4 text-emerald-400">連線設定</h2>
+      <form id="connection-form" onsubmit="saveConnection(event)">
+        <input type="hidden" id="conn-id">
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm text-slate-400 mb-1">名稱</label>
+            <input type="text" id="conn-name" required placeholder="例如: 阿里雲 / 騰訊雲" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
+          </div>
+          <div class="grid grid-cols-3 gap-4">
+            <div class="col-span-2">
+              <label class="block text-sm text-slate-400 mb-1">主機 IP / 域名</label>
+              <input type="text" id="conn-host" required placeholder="192.168.1.1" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
+            </div>
+            <div>
+              <label class="block text-sm text-slate-400 mb-1">端口</label>
+              <input type="number" id="conn-port" value="22" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm text-slate-400 mb-1">使用者名稱</label>
+            <input type="text" id="conn-username" required placeholder="root" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
+          </div>
+          <div>
+            <label class="block text-sm text-slate-400 mb-1">驗證方式</label>
+            <select id="conn-auth-type" onchange="toggleAuthType()" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
+              <option value="password">密碼驗證</option>
+              <option value="key">Ed25519 / RSA 私鑰驗證</option>
+            </select>
+          </div>
+          <div id="password-field">
+            <label class="block text-sm text-slate-400 mb-1">密碼</label>
+            <input type="password" id="conn-password" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
+          </div>
+          <div id="key-field" class="hidden">
+            <label class="block text-sm text-slate-400 mb-1">私鑰 (PEM 格式)</label>
+            <textarea id="conn-privatekey" rows="4" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-emerald-500"></textarea>
+          </div>
+        </div>
+        <div class="mt-6 flex justify-end space-x-3">
+          <button type="button" onclick="hideModal()" class="px-4 py-2 border border-slate-800 rounded hover:bg-slate-800 transition">取消</button>
+          <button type="submit" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-white font-medium transition">儲存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 終端機全螢幕容器 -->
+  <div id="terminal-screen" class="fixed inset-0 bg-black hidden flex-col z-50">
+    <div class="bg-slate-900 px-4 py-2 flex justify-between items-center border-b border-slate-800 text-sm">
+      <span id="active-terminal-title" class="font-mono text-slate-300">連線中...</span>
+      <button onclick="closeTerminal()" class="bg-rose-700 hover:bg-rose-600 px-3 py-1 rounded text-white transition">
+        中斷連線
+      </button>
+    </div>
+    <div id="terminal-container" class="flex-1 p-2 bg-black"></div>
+  </div>
+
+  <script>
+    let ws = null;
+    let term = null;
+    let fitAddon = null;
+
+    // 初始化載入
+    document.addEventListener("DOMContentLoaded", fetchConnections);
+
+    async function fetchConnections() {
+      try {
+        const res = await fetch('/api/connections');
+        const list = await res.json();
+        const grid = document.getElementById('connections-grid');
+        const empty = document.getElementById('empty-state');
+        grid.innerHTML = '';
+
+        if (list.length === 0) {
+          empty.classList.remove('hidden');
+          return;
+        }
+        empty.classList.add('hidden');
+
+        list.forEach(conn => {
+          const card = document.createElement('div');
+          card.className = "bg-slate-900 border border-slate-800 rounded-lg p-5 flex flex-col justify-between hover:border-slate-700 transition shadow-md";
+          card.innerHTML = `
+            <div>
+              <h3 class="text-lg font-bold text-slate-100">${conn.name}</h3>
+              <p class="text-sm text-slate-400 font-mono mt-1">${conn.username}@${conn.host}:${conn.port}</p>
+            </div>
+            <div class="mt-5 flex justify-end space-x-2">
+              <button onclick="deleteConnection('${conn.id}')" class="text-rose-400 hover:text-rose-300 px-3 py-1.5 text-sm transition">刪除</button>
+              <button onclick="connectSSH('${conn.id}', '${conn.name}')" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-1.5 rounded text-sm font-medium transition">連線</button>
+            </div>
+          `;
+          grid.appendChild(card);
+        });
+      } catch (err) {
+        console.error("無法取得伺服器列表:", err);
+      }
+    }
+
+    function showAddModal() {
+      document.getElementById('connection-form').reset();
+      document.getElementById('conn-id').value = '';
+      document.getElementById('modal').classList.remove('hidden');
+      document.getElementById('modal').classList.add('flex');
+      toggleAuthType();
+    }
+
+    function hideModal() {
+      document.getElementById('modal').classList.add('hidden');
+      document.getElementById('modal').classList.remove('flex');
+    }
+
+    function toggleAuthType() {
+      const type = document.getElementById('conn-auth-type').value;
+      if (type === 'password') {
+        document.getElementById('password-field').classList.remove('hidden');
+        document.getElementById('key-field').classList.add('hidden');
+      } else {
+        document.getElementById('password-field').classList.add('hidden');
+        document.getElementById('key-field').classList.remove('hidden');
+      }
+    }
+
+    async function saveConnection(event) {
+      event.preventDefault();
+      const id = document.getElementById('conn-id').value;
+      const name = document.getElementById('conn-name').value;
+      const host = document.getElementById('conn-host').value;
+      const port = document.getElementById('conn-port').value;
+      const username = document.getElementById('conn-username').value;
+      const authType = document.getElementById('conn-auth-type').value;
+
+      const body = { id, name, host, port, username };
+      if (authType === 'password') {
+        body.password = document.getElementById('conn-password').value;
+      } else {
+        body.privateKey = document.getElementById('conn-privatekey').value;
+      }
+
+      await fetch('/api/connections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      hideModal();
+      fetchConnections();
+    }
+
+    async function deleteConnection(id) {
+      if (confirm('確定要刪除此伺服器連線配置嗎？')) {
+        await fetch(`/api/connections/${id}`, { method: 'DELETE' });
+        fetchConnections();
+      }
+    }
+
+    // 連線至 SSH
+    function connectSSH(id, name) {
+      document.getElementById('active-terminal-title').textContent = `連線至: ${name}`;
+      document.getElementById('terminal-screen').classList.remove('hidden');
+      document.getElementById('terminal-screen').classList.add('flex');
+
+      // 初始化 xterm.js
+      term = new Terminal({
+        cursorBlink: true,
+        fontFamily: 'Courier New, Courier, monospace',
+        fontSize: 14,
+        theme: {
+          background: '#020617', // Slate-950
+          foreground: '#f8fafc',
+          cursor: '#10b981'
+        }
+      });
+
+      fitAddon = new window.FitAddon.FitAddon(); // 引入適應外層組件
+      term.loadAddon(fitAddon);
+      term.open(document.getElementById('terminal-container'));
+      fitAddon.fit();
+
+      // 建立 WebSocket 通訊
+      const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+      const wsUrl = `${protocol}${window.location.host}/ssh/${id}`;
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        term.write('\r\n[CF-WebSSH]: 已成功建立通訊隧道，正在連線遠端伺服器...\r\n');
+        // 發送初始視窗維度
+        ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+      };
+
+      ws.onmessage = (event) => {
+        term.write(event.data);
+      };
+
+      ws.onclose = () => {
+        term.write('\r\n[CF-WebSSH]: 連線已中斷。\r\n');
+      };
+
+      // 處理鍵盤輸入發送
+      term.onData(data => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'data', data: data }));
+        }
+      });
+
+      // 監聽瀏覽器視窗大小調整
+      window.addEventListener('resize', onWindowResize);
+    }
+
+    function onWindowResize() {
+      if (fitAddon && term) {
+        fitAddon.fit();
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'resize',
+            cols: term.cols,
+            rows: term.rows
+          }));
+        }
+      }
+    }
+
+    function closeTerminal() {
+      window.removeEventListener('resize', onWindowResize);
+      if (ws) {
+        ws.close();
+        ws = null;
+      }
+      if (term) {
+        term.dispose();
+        term = null;
+      }
+      document.getElementById('terminal-screen').classList.add('hidden');
+      document.getElementById('terminal-screen').classList.remove('flex');
+    }
+  </script>
+</body>
+</html>
