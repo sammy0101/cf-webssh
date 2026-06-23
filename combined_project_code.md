@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Tue Jun 23 17:20:09 UTC 2026
+Generated on: Tue Jun 23 17:43:13 UTC 2026
 
 ## File: README.md
 ````md
@@ -22,13 +22,17 @@ export default {
       });
     }
 
-    // 2. API: 獲取已儲存的連線列表 (不返回敏感的密碼與私鑰)
+    // 2. API: 獲取已儲存的連線列表 (不返回敏感的密碼與私鑰，但標記其認證類型)
     if (url.pathname === '/api/connections' && request.method === 'GET') {
       try {
         const list = await env.WEBSSH_KV.list({ prefix: 'connection:' });
+        const keys = list.keys;
+        
+        // 使用 Promise.all 併發讀取，優化效能
+        const values = await Promise.all(keys.map(key => env.WEBSSH_KV.get(key.name)));
         const connections = [];
-        for (const key of list.keys) {
-          const val = await env.WEBSSH_KV.get(key.name);
+
+        for (const val of values) {
           if (val) {
             const data = JSON.parse(val);
             connections.push({
@@ -37,6 +41,7 @@ export default {
               host: data.host,
               port: data.port || 22,
               username: data.username,
+              authType: data.privateKey ? 'key' : 'password', // 用於前端判斷認證模式
             });
           }
         }
@@ -51,7 +56,7 @@ export default {
       }
     }
 
-    // 3. API: 新增/更新連線資訊 (儲存密碼或私鑰至 KV)
+    // 3. API: 新增/更新連線資訊 (支援局部更新保留舊密碼/私鑰)
     if (url.pathname === '/api/connections' && request.method === 'POST') {
       try {
         const data = await request.json();
@@ -62,15 +67,27 @@ export default {
           });
         }
         const id = data.id || crypto.randomUUID();
+
+        // 讀取現有配置進行安全合併
+        const existingVal = await env.WEBSSH_KV.get(`connection:${id}`);
+        let existing = {};
+        if (existingVal) {
+          try {
+            existing = JSON.parse(existingVal);
+          } catch (_) {}
+        }
+
         const connectionData = {
           id,
           name: data.name,
           host: data.host,
           port: parseInt(data.port) || 22,
           username: data.username,
-          password: data.password || '',
-          privateKey: data.privateKey || '',
+          // 若沒傳入相關敏感欄位，則保留原本保存在 KV 的密碼/私鑰
+          password: data.password !== undefined ? data.password : (existing.password || ''),
+          privateKey: data.privateKey !== undefined ? data.privateKey : (existing.privateKey || ''),
         };
+        
         await env.WEBSSH_KV.put(`connection:${id}`, JSON.stringify(connectionData));
         return new Response(JSON.stringify({ success: true, id }), {
           headers: { 'Content-Type': 'application/json' },
@@ -114,10 +131,17 @@ export default {
 
       const sshClient = new Client();
       let sshStream = null;
+      let pendingResize = null; // 用來存取在 Stream 尚未就緒時前端發送的縮放設定
 
       sshClient.on('ready', () => {
         server.send('\r\n[SSH] 已連線，正在啟動終端...\r\n');
-        sshClient.exec('bash --login', { pty: { term: 'xterm-256color', cols: 80, rows: 24 } }, (err, stream) => {
+        
+        // 使用前端已發送的視窗大小，或預設 80x24
+        const initialCols = pendingResize ? pendingResize.cols : 80;
+        const initialRows = pendingResize ? pendingResize.rows : 24;
+
+        // 使用互動式 shell 建立終端連線
+        sshClient.shell({ term: 'xterm-256color', cols: initialCols, rows: initialRows }, (err, stream) => {
           if (err) {
             server.send(`\r\n[SSH Shell 啟動失敗]: ${err.message}\r\n`);
             server.close(1011);
@@ -173,15 +197,18 @@ export default {
       server.addEventListener('message', (event) => {
         try {
           const msg = JSON.parse(event.data);
-          if (msg.type === 'resize' && sshStream) {
-            // 控制終端視窗大小
-            sshStream.setWindow(msg.rows, msg.cols);
+          if (msg.type === 'resize') {
+            if (sshStream) {
+              sshStream.setWindow(msg.rows, msg.cols);
+            } else {
+              // 終端未啟動時，先儲存視窗縮放設定
+              pendingResize = { rows: msg.rows, cols: msg.cols };
+            }
           } else if (msg.type === 'data' && sshStream) {
-            // 寫入終端指令
             sshStream.write(msg.data);
           }
         } catch (e) {
-          // 若不為 JSON，相容寫入原始資料
+          // 相容寫入原始字串資料
           if (sshStream) {
             sshStream.write(event.data);
           }
@@ -201,33 +228,7 @@ export default {
           keepaliveInterval: 15000,
           keepaliveCountMax: 3,
           tryKeyboard: true,
-          algorithms: {
-            kex: [
-              'ecdh-sha2-nistp256',
-              'ecdh-sha2-nistp384',
-              'ecdh-sha2-nistp521',
-              'diffie-hellman-group14-sha256',
-              'diffie-hellman-group14-sha1',
-            ],
-            hostKey: [
-              'ssh-ed25519',
-              'ecdsa-sha2-nistp256',
-              'ecdsa-sha2-nistp384',
-              'ecdsa-sha2-nistp521',
-              'rsa-sha2-512',
-              'rsa-sha2-256',
-              'ssh-rsa',
-            ],
-            cipher: [
-              'aes128-ctr',
-              'aes192-ctr',
-              'aes256-ctr',
-              'aes128-cbc',
-              'aes192-cbc',
-              'aes256-cbc',
-              '3des-cbc',
-            ],
-          },
+          // 移除 algorithms 設定，讓 ssh2 自動選擇兼容當前系統的最優演算法
         };
 
         if (config.privateKey) {
