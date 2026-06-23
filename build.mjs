@@ -27,42 +27,53 @@ const ignoreNodeExtensionsPlugin = {
 };
 
 // 撰寫具備高度診斷與防禦機制的 Banner 代碼
+// 包含自動補齊 ESM Namespace Object 所缺少的 hasOwnProperty 方法
 const bannerJs = `import { createRequire } from 'node:module';
 const _origRequire = createRequire(import.meta.url || 'file:///index.js');
 const require = (name) => {
   const nodeBuiltins = ['assert', 'buffer', 'child_process', 'cluster', 'console', 'constants', 'crypto', 'dgram', 'dns', 'domain', 'events', 'fs', 'http', 'http2', 'https', 'inspector', 'module', 'net', 'os', 'path', 'perf_hooks', 'process', 'punycode', 'querystring', 'readline', 'repl', 'stream', 'string_decoder', 'sys', 'timers', 'tls', 'trace_events', 'tty', 'url', 'util', 'v8', 'vm', 'wasi', 'worker_threads', 'zlib'];
   
-  // 1. 進程控制相關模組在邊緣計算不支援，直接預先阻斷並提供基本 Mock，防止觸發底層崩潰
+  // 1. 阻斷不支援的進程管理模組
   if (name === 'child_process' || name === 'node:child_process') {
-    console.warn('[WebSSH-Mock]: 攔截並阻斷 child_process 加載，已提供 Dummy 對象。');
     return { spawn: () => {}, exec: () => {}, execFile: () => {}, fork: () => {} };
   }
 
-  // 2. 對其餘模組載入套用 try-catch，以便詳細輸出錯誤並提供 Proxy 安全降級
+  let res;
   try {
-    if (nodeBuiltins.includes(name)) {
-      return _origRequire('node:' + name);
-    }
-    return _origRequire(name);
+    // 2. 自動為內建模組加上 node: 前綴並載入
+    res = _origRequire(nodeBuiltins.includes(name) ? 'node:' + name : name);
   } catch (err) {
-    // 仔細輸出錯誤，包括模組名稱與底層回報的錯誤訊息
     console.error('=================== [WEBSSH-REQUIRE 診斷日誌] ===================');
-    console.error('【加載異常】：無法在 Cloudflare Workers 環境加載 Node.js 核心模組 ->', name);
+    console.error('【加載異常】：無法在 Cloudflare Workers 環境加載模組 ->', name);
     console.error('【底層錯誤】：', err.stack || err.message || err);
-    console.error('【降級處理】：已對此模組套用 Proxy 防護，避免阻止 Worker 初始化部署。');
     console.error('================================================================');
-
-    // 回傳 Proxy 安全對象，防止靜態分析及初始化期因存取未實現的屬性而崩潰
+    
     return new Proxy({}, {
       get: (target, prop) => {
-        // 防止 thenable 偵測（如 Promise.resolve 判斷）導致的無窮迴圈
-        if (typeof prop === 'string' && prop === 'then') {
-          return undefined;
-        }
+        if (prop === 'then') return undefined;
+        if (prop === 'hasOwnProperty') return () => false;
         return () => {};
       }
     });
   }
+
+  // 3. 核心修復：Cloudflare 回傳的 ESM Namespace Object 沒有 hasOwnProperty
+  // 攔截屬性讀取，將缺失的原型方法補齊，防止 safer-buffer 等老舊庫報錯
+  if (res && typeof res === 'object' && typeof res.hasOwnProperty !== 'function') {
+    return new Proxy(res, {
+      get(target, prop) {
+        if (prop === 'hasOwnProperty') {
+          return Object.prototype.hasOwnProperty.bind(target);
+        }
+        if (prop === 'toString') {
+          return Object.prototype.toString.bind(target);
+        }
+        return target[prop];
+      }
+    });
+  }
+
+  return res;
 };`;
 
 try {
