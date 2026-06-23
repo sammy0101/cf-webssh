@@ -126,8 +126,8 @@
         <span id="active-terminal-title" class="font-mono text-slate-300">連線中...</span>
         
         <span class="text-slate-700 hidden md:inline">|</span>
-        <!-- 檔案瀏覽器側邊欄切換主按鈕 -->
-        <button onclick="toggleSftpSidebar()" class="text-xs bg-slate-800 hover:bg-slate-700 hover:text-emerald-300 text-emerald-400 border border-slate-700 px-2.5 py-1 rounded font-medium transition flex items-center gap-1.5">
+        <!-- 檔案瀏覽器彈窗切換主按鈕 -->
+        <button onclick="toggleSftpModal()" class="text-xs bg-slate-800 hover:bg-slate-700 hover:text-emerald-300 text-emerald-400 border border-slate-700 px-2.5 py-1 rounded font-medium transition flex items-center gap-1.5">
           📁 SFTP 檔案管理
         </button>
         <span class="text-xs text-slate-500 hidden lg:inline">（亦支援滑鼠直接拖曳本機檔案至終端機內放開上傳）</span>
@@ -140,11 +140,10 @@
       </button>
     </div>
 
-    <!-- 工作區域：終端機與檔案瀏覽器的彈性容器 -->
+    <!-- 工作區域：終端機容器 (維持滿版，確保排版穩定) -->
     <div class="flex-1 flex overflow-hidden">
-      <!-- 終端機容器 -->
       <div id="terminal-container" class="flex-1 p-2 bg-black relative">
-         <!-- SFTP 拖放上傳提示遮罩 (加上 pointer-events-none 防止滑鼠滑入子節點時閃爍) -->
+         <!-- SFTP 拖放上傳提示遮罩 -->
          <div id="dropzone-overlay" class="absolute inset-0 bg-emerald-950/85 border-4 border-dashed border-emerald-400 hidden flex-col items-center justify-center z-40 pointer-events-none">
            <div class="text-center p-6">
              <svg class="w-16 h-16 text-emerald-400 mx-auto mb-4 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -155,52 +154,56 @@
            </div>
          </div>
       </div>
+    </div>
+  </div>
 
-      <!-- 右側 SFTP 檔案管理器側邊欄容器（將 hidden 改為 style 預設隱藏，消除框架樣式衝突） -->
-      <div id="sftp-sidebar" class="w-80 bg-slate-900 border-l border-slate-800 flex flex-col transition-all duration-300" style="display: none;">
-        <!-- 側邊欄標題 -->
-        <div class="p-3 border-b border-slate-800 flex justify-between items-center bg-slate-950">
-          <h3 class="font-bold text-emerald-400 text-sm flex items-center gap-1.5">
-            📁 遠端檔案管理器
-          </h3>
-          <button onclick="toggleSftpSidebar()" class="text-slate-400 hover:text-white text-xs">
-            關閉 ✕
+  <!-- SFTP 檔案管理器中央彈窗 Modal (新增：採用 fixed 居中視窗，100% 彈出且不受父容器擠壓) -->
+  <div id="sftp-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-40">
+    <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-2xl h-[80vh] flex flex-col shadow-2xl overflow-hidden animate-fade-in">
+      
+      <!-- 側邊欄標題 -->
+      <div class="pb-3 border-b border-slate-800 flex justify-between items-center bg-slate-900">
+        <h3 class="font-bold text-emerald-400 text-base flex items-center gap-1.5">
+          📁 SFTP 遠端檔案管理器
+        </h3>
+        <button onclick="toggleSftpModal()" class="text-slate-400 hover:text-white text-sm font-bold p-1">
+          關閉 ✕
+        </button>
+      </div>
+      
+      <!-- 操作控制與上傳按鈕 -->
+      <div class="py-3 border-b border-slate-800 bg-slate-900 flex items-center gap-2 justify-between">
+        <div class="flex items-center gap-2">
+          <button onclick="sftpGoUp()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1" title="返回上層目錄">
+            向上 ↩
+          </button>
+          <button onclick="refreshSftpList()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1" title="重新整理列表">
+            整理 ↻
           </button>
         </div>
-        
-        <!-- 操作控制與上傳按鈕 -->
-        <div class="p-2 border-b border-slate-800 bg-slate-900/50 flex items-center gap-1.5 justify-between">
-          <div class="flex items-center gap-1.5">
-            <button onclick="sftpGoUp()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded text-xs font-medium" title="返回上層目錄">
-              向上 ↩
-            </button>
-            <button onclick="refreshSftpList()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded text-xs font-medium" title="重新整理列表">
-              整理 ↻
-            </button>
-          </div>
-          <!-- 收納整合後的手動上傳按鈕 -->
-          <button onclick="triggerFileInput()" class="text-xs bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1 rounded font-medium transition flex items-center gap-1">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
-            </svg>
-            上傳檔案
-          </button>
-        </div>
+        <!-- 整合至檔案管理器內的手動上傳按鈕 -->
+        <button onclick="triggerFileInput()" class="text-xs bg-emerald-600 hover:bg-emerald-500 text-white px-3.5 py-1.5 rounded font-semibold transition flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+          </svg>
+          上傳檔案
+        </button>
+      </div>
 
-        <!-- 目前目錄路徑顯示欄 -->
-        <div class="p-2 border-b border-slate-800 bg-slate-950 flex items-center gap-1">
-          <input type="text" id="sftp-current-path" readonly class="w-full bg-transparent border-none text-slate-300 text-[11px] font-mono select-all focus:outline-none">
-        </div>
+      <!-- 目前目錄路徑顯示欄 -->
+      <div class="p-2 border-b border-slate-800 bg-slate-950 flex items-center gap-1">
+        <span class="text-xs text-slate-500 font-mono">路徑:</span>
+        <input type="text" id="sftp-current-path" readonly class="flex-1 bg-transparent border-none text-slate-300 text-[11px] font-mono select-all focus:outline-none">
+      </div>
 
-        <!-- 檔案與資料夾清單區 -->
-        <div id="sftp-file-list" class="flex-1 overflow-y-auto p-2 space-y-1 text-xs font-mono select-none">
-          <!-- 動態渲染清單 -->
-        </div>
+      <!-- 檔案與資料夾清單區 -->
+      <div id="sftp-file-list" class="flex-1 overflow-y-auto p-4 space-y-1.5 text-xs font-mono select-none">
+        <!-- 動態渲染清單 -->
       </div>
     </div>
   </div>
 
-  <!-- 上傳與下載進度顯示遮罩 -->
+  <!-- 上傳與下載進度顯示遮罩 (維持原樣) -->
   <div id="upload-overlay" class="fixed inset-0 bg-black/70 hidden items-center justify-center p-4 z-50">
     <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-sm shadow-2xl text-center">
       <h3 class="text-lg font-bold text-emerald-400 mb-2">傳輸處理中 (SFTP)</h3>
@@ -226,7 +229,7 @@
     let sftpUploadCancelled = false; // 是否取消傳輸標記
     let activeConnectionId = null;   // 當前終端連線伺服器 ID
     let sftpCurrentPath = '.';       // 當前檔案管理器絕對路徑
-    let sftpSidebarOpen = false;     // 檔案管理器側邊欄狀態
+    let sftpModalOpen = false;       // 檔案管理器彈窗開關狀態 (改為 Modal)
     let sftpFileChunks = [];         // 用於下載儲存二進位區塊
     let currentDownloadingFilename = ''; // 當前正在下載的檔名
     let uploadFile = null;           // 當前正在上傳的 File 物件
@@ -482,11 +485,11 @@
         if (files && files.length > 0) {
           // 判斷 SFTP 通道是否就緒，若未就緒自動打開面板建立通道並上傳
           if (!sftpWs || sftpWs.readyState !== WebSocket.OPEN) {
-            toggleSftpSidebar();
+            toggleSftpModal();
             // 等待一小段時間確保連線建立
             setTimeout(() => {
               handleSftpUpload(connectionId, files[0]);
-            }, 1000);
+            }, 1200);
           } else {
             handleSftpUpload(connectionId, files[0]);
           }
@@ -520,8 +523,6 @@
       sftpWs.binaryType = 'arraybuffer';
 
       sftpWs.onopen = () => {
-        // WebSocket 通道已開啟，但遠端 SSH-SFTP 握手尚未完成。
-        // 此處僅變更提示狀態，等待後端傳送「ready」信號再進行資料載入。
         sftpCurrentPath = '.';
         fileListContainer.innerHTML = '<div class="text-slate-500 text-center py-8">正在連線遠端伺服器 (SSH)...</div>';
       };
@@ -547,7 +548,6 @@
           if (msg.status === 'error') {
             alert(`SFTP 操作失敗: ${msg.message}`);
             closeUploadOverlay();
-            // 如果是在初始載入時出錯，更新介面狀態
             if (fileListContainer.innerHTML.includes('正在')) {
                fileListContainer.innerHTML = `<div class="text-rose-400 p-4 text-center">連線失敗: ${msg.message}</div>`;
             } else {
@@ -556,7 +556,7 @@
             return;
           }
 
-          // 新增：當後端 SSH 和 SFTP 元件完全就緒後，再發送首個目錄列表要求
+          // 當後端 SSH 和 SFTP 元件完全就緒後，再發送首個目錄列表要求
           if (msg.status === 'ready') {
             sftpWs.send(JSON.stringify({ action: 'list', path: sftpCurrentPath }));
           }
@@ -648,28 +648,20 @@
       }
     }
 
-    // 6.1 開關檔案管理器側邊欄 (修改：完全使用原生內聯樣式控制，徹底避免 Tailwind 優先級衝突)
-    function toggleSftpSidebar() {
-      const sidebar = document.getElementById('sftp-sidebar');
-      sftpSidebarOpen = !sftpSidebarOpen;
+    // 6.1 開關檔案管理器彈出視窗 (修改為 Modal 視窗形式，保證絕對可見性)
+    function toggleSftpModal() {
+      const modal = document.getElementById('sftp-modal');
+      sftpModalOpen = !sftpModalOpen;
       
-      if (sftpSidebarOpen) {
-        sidebar.style.display = 'flex'; // 原生強制顯示
+      if (sftpModalOpen) {
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
         connectSftpWebSocket();
       } else {
-        sidebar.style.display = 'none'; // 原生強制隱藏
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
         disconnectSftpWebSocket();
       }
-      
-      // 給予側邊欄過渡一些時間，隨後重新調適終端機大小
-      setTimeout(() => {
-        if (fitAddon) {
-          fitAddon.fit();
-          if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
-          }
-        }
-      }, 100);
     }
 
     // 6.2 重新整理 SFTP 檔案清單
@@ -753,7 +745,6 @@
     function sftpDownloadFile(filename) {
       if (!sftpWs || sftpWs.readyState !== WebSocket.OPEN) return;
       const targetPath = sftpCurrentPath === '/' ? `/${filename}` : `${sftpCurrentPath}/${filename}`;
-      // 向單一 WebSocket 發送下載檔案指令
       sftpWs.send(JSON.stringify({ action: 'download_start', path: targetPath }));
     }
 
@@ -923,8 +914,8 @@
 
     function closeTerminal() {
       // 關閉終端機時，同步隱藏檔案管理器並中斷連線
-      if (sftpSidebarOpen) {
-        toggleSftpSidebar();
+      if (sftpModalOpen) {
+        toggleSftpModal();
       }
       activeConnectionId = null; // 清空伺服器連線 ID
       window.removeEventListener('resize', onWindowResize);
