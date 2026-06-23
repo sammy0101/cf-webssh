@@ -246,6 +246,9 @@
       term.loadAddon(fitAddon);
       term.open(document.getElementById('terminal-container'));
       fitAddon.fit();
+      
+      // 自動將焦點鎖定至終端機，免去滑鼠點擊
+      term.focus();
 
       // 建立 WebSocket 通訊
       const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
