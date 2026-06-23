@@ -11,18 +11,14 @@ const nodeBuiltins = [
 ];
 
 // 建立一個 esbuild 插件，用來忽略二進位原生模組 (.node 檔案)
-// 因為 Cloudflare Workers 環境不支援原生二進位元件，
-// 而 ssh2 內部具備自動降級（try/catch 降級至純 JS）的邏輯。
 const ignoreNodeExtensionsPlugin = {
   name: 'ignore-node-extensions',
   setup(build) {
-    // 攔截所有以 .node 結尾的引用
     build.onResolve({ filter: /\.node$/ }, args => ({
       path: args.path,
       namespace: 'ignore-node-extensions-namespace',
     }));
 
-    // 將該引用載入為空的 CommonJS 模組
     build.onLoad({ filter: /.*/, namespace: 'ignore-node-extensions-namespace' }, () => ({
       contents: 'module.exports = {};',
       loader: 'js',
@@ -37,12 +33,16 @@ try {
     outfile: 'dist/index.js',
     format: 'esm',
     target: 'es2022',
-    platform: 'browser', // 改為 browser，讓 esbuild 將 CommonJS 的 require 轉換為 ESM 的 static import
+    platform: 'browser', 
     external: [
       'cloudflare:sockets',
       ...nodeBuiltins,
-      ...nodeBuiltins.map(name => `node:${name}`) // 同時支援帶 node: 與不帶前綴的導入方式
+      ...nodeBuiltins.map(name => `node:${name}`)
     ],
+    // 注入 banner：在輸出的 ESM 頂部引入 createRequire，建構一個合法的 require 函數
+    banner: {
+      js: "import { createRequire } from 'module'; const require = createRequire(import.meta.url);",
+    },
     plugins: [ignoreNodeExtensionsPlugin],
     loader: {
       '.html': 'text',
