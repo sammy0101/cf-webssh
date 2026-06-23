@@ -16,8 +16,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
+          node-version: 24 # 升級至 Node 24，避免 Node 20 棄用警告
 
       - name: Install Dependencies
         run: npm install
@@ -55,6 +54,9 @@ jobs:
           # 5. 動態將取得的 KV ID 替換寫入 wrangler.toml
           sed -i "s/KV_NAMESPACE_ID_PLACEHOLDER/$KV_ID/g" wrangler.toml
           echo "KV 綁定完成，準備進行部署。"
+
+          # 檢查替換後的 wrangler.toml (可選，除錯用)
+          cat wrangler.toml
 
       - name: Deploy to Cloudflare
         run: npm run deploy
