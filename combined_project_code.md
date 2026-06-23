@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Tue Jun 23 17:50:40 UTC 2026
+Generated on: Tue Jun 23 17:55:18 UTC 2026
 
 ## File: README.md
 ````md
@@ -539,6 +539,9 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
       term.loadAddon(fitAddon);
       term.open(document.getElementById('terminal-container'));
       fitAddon.fit();
+      
+      // 自動將焦點鎖定至終端機，免去滑鼠點擊
+      term.focus();
 
       // 建立 WebSocket 通訊
       const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
