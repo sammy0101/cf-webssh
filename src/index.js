@@ -1,4 +1,5 @@
 import { Client } from 'ssh2';
+import { Readable } from 'node:stream';
 import htmlContent from '../public/index.html';
 
 // 使用 WebCrypto 計算 SHA-256 雜湊值
@@ -39,7 +40,7 @@ export default {
       return token === expected;
     };
 
-    // 安全防禦門禁：若啟用密碼驗證且未授權，阻擋所有非公開路徑（包含 SSH 與 SFTP WebSocket）
+    // 安全防禦門禁：若啟用密碼驗證且未授權，阻擋所有非公開路徑
     const publicPaths = ['/', '/index.html', '/api/login', '/api/auth-check', '/api/logout'];
     if (!publicPaths.includes(url.pathname)) {
       if (!(await isAuthorized())) {
@@ -71,7 +72,6 @@ export default {
         const { password } = await request.json();
         if (isAuthEnabled && password === adminPassword) {
           const token = await getExpectedToken(adminPassword);
-          // 設定 HttpOnly, Secure, SameSite=Strict 且 30 天內有效的 Cookie
           return new Response(JSON.stringify({ success: true }), {
             headers: {
               'Content-Type': 'application/json',
@@ -188,6 +188,199 @@ export default {
           status: 500,
           headers: { 'Content-Type': 'application/json' },
         });
+      }
+    }
+
+    // 4.1 API: SFTP 取得檔案列表 (新增)
+    if (url.pathname === '/api/sftp/list' && request.method === 'GET') {
+      try {
+        const connId = url.searchParams.get('id');
+        const path = url.searchParams.get('path') || '.';
+        const connectionVal = await env.WEBSSH_KV.get(`connection:${connId}`);
+        if (!connectionVal) return new Response('Not Found', { status: 404 });
+        const config = JSON.parse(connectionVal);
+
+        return new Promise((resolve) => {
+          const sshClient = new Client();
+          sshClient.on('ready', () => {
+            sshClient.sftp((err, sftp) => {
+              if (err) {
+                sshClient.end();
+                return resolve(new Response(JSON.stringify({ error: err.message }), { status: 500 }));
+              }
+              // 解析絕對路徑以確保導航與麵包屑的一致性
+              sftp.realpath(path, (err, absPath) => {
+                const targetPath = err ? path : absPath;
+                sftp.readdir(targetPath, (err, list) => {
+                  sshClient.end();
+                  if (err) {
+                    return resolve(new Response(JSON.stringify({ error: err.message }), { status: 500 }));
+                  }
+                  
+                  const files = list.map(item => {
+                    return {
+                      name: item.filename,
+                      size: item.attrs.size,
+                      isDir: item.attrs.isDirectory(),
+                      modifyTime: item.attrs.mtime
+                    };
+                  }).sort((a, b) => {
+                    // 資料夾排在最前面，隨後按名稱排序
+                    if (a.isDir && !b.isDir) return -1;
+                    if (!a.isDir && b.isDir) return 1;
+                    return a.name.localeCompare(b.name);
+                  });
+
+                  return resolve(new Response(JSON.stringify({ path: targetPath, files }), {
+                    headers: { 'Content-Type': 'application/json' }
+                  }));
+                });
+              });
+            });
+          });
+          sshClient.on('error', (err) => {
+            resolve(new Response(JSON.stringify({ error: err.message }), { status: 500 }));
+          });
+
+          const connectOptions = {
+            host: config.host,
+            port: config.port || 22,
+            username: config.username,
+            readyTimeout: 30000,
+            keepaliveInterval: 15000,
+            keepaliveCountMax: 3,
+            tryKeyboard: true,
+            algorithms: {
+              kex: ['ecdh-sha2-nistp256', 'ecdh-sha2-nistp384', 'ecdh-sha2-nistp521', 'diffie-hellman-group14-sha256', 'diffie-hellman-group16-sha512', 'diffie-hellman-group-exchange-sha256'],
+              cipher: ['aes128-ctr', 'aes192-ctr', 'aes256-ctr', 'aes128-cbc', 'aes192-cbc', 'aes256-cbc']
+            }
+          };
+          if (config.privateKey) connectOptions.privateKey = config.privateKey;
+          else connectOptions.password = config.password;
+          sshClient.connect(connectOptions);
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), { status: 500 });
+      }
+    }
+
+    // 4.2 API: SFTP 檔案串流下載 (新增)
+    if (url.pathname === '/api/sftp/download' && request.method === 'GET') {
+      try {
+        const connId = url.searchParams.get('id');
+        const path = url.searchParams.get('path');
+        const connectionVal = await env.WEBSSH_KV.get(`connection:${connId}`);
+        if (!connectionVal) return new Response('Not Found', { status: 404 });
+        const config = JSON.parse(connectionVal);
+
+        return new Promise((resolve) => {
+          const sshClient = new Client();
+          sshClient.on('ready', () => {
+            sshClient.sftp((err, sftp) => {
+              if (err) {
+                sshClient.end();
+                return resolve(new Response('SFTP Error', { status: 500 }));
+              }
+
+              const filename = path.split('/').pop() || 'download';
+              const nodeStream = sftp.createReadStream(path);
+              
+              // 當串流完成、關閉或報錯時，關閉底層 SSH 連線
+              const cleanup = () => sshClient.end();
+              nodeStream.on('close', cleanup);
+              nodeStream.on('error', cleanup);
+
+              // 轉換為 Web ReadableStream 返回，節省 Worker 記憶體
+              const webStream = Readable.toWeb(nodeStream);
+              return resolve(new Response(webStream, {
+                headers: {
+                  'Content-Type': 'application/octet-stream',
+                  'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`
+                }
+              }));
+            });
+          });
+          sshClient.on('error', () => {
+            resolve(new Response('SSH Error', { status: 500 }));
+          });
+
+          const connectOptions = {
+            host: config.host,
+            port: config.port || 22,
+            username: config.username,
+            readyTimeout: 30000,
+            keepaliveInterval: 15000,
+            keepaliveCountMax: 3,
+            tryKeyboard: true,
+            algorithms: {
+              kex: ['ecdh-sha2-nistp256', 'ecdh-sha2-nistp384', 'ecdh-sha2-nistp521', 'diffie-hellman-group14-sha256', 'diffie-hellman-group16-sha512', 'diffie-hellman-group-exchange-sha256'],
+              cipher: ['aes128-ctr', 'aes192-ctr', 'aes256-ctr', 'aes128-cbc', 'aes192-cbc', 'aes256-cbc']
+            }
+          };
+          if (config.privateKey) connectOptions.privateKey = config.privateKey;
+          else connectOptions.password = config.password;
+          sshClient.connect(connectOptions);
+        });
+      } catch (err) {
+        return new Response(err.message, { status: 500 });
+      }
+    }
+
+    // 4.3 API: SFTP 刪除檔案或資料夾 (新增)
+    if (url.pathname === '/api/sftp/delete' && request.method === 'POST') {
+      try {
+        const { id: connId, path, isDir } = await request.json();
+        const connectionVal = await env.WEBSSH_KV.get(`connection:${connId}`);
+        if (!connectionVal) return new Response('Not Found', { status: 404 });
+        const config = JSON.parse(connectionVal);
+
+        return new Promise((resolve) => {
+          const sshClient = new Client();
+          sshClient.on('ready', () => {
+            sshClient.sftp((err, sftp) => {
+              if (err) {
+                sshClient.end();
+                return resolve(new Response(JSON.stringify({ error: err.message }), { status: 500 }));
+              }
+
+              const callback = (err) => {
+                sshClient.end();
+                if (err) return resolve(new Response(JSON.stringify({ error: err.message }), { status: 500 }));
+                return resolve(new Response(JSON.stringify({ success: true }), {
+                  headers: { 'Content-Type': 'application/json' }
+                }));
+              };
+
+              if (isDir) {
+                sftp.rmdir(path, callback);
+              } else {
+                sftp.unlink(path, callback);
+              }
+            });
+          });
+          sshClient.on('error', (err) => {
+            resolve(new Response(JSON.stringify({ error: err.message }), { status: 500 }));
+          });
+
+          const connectOptions = {
+            host: config.host,
+            port: config.port || 22,
+            username: config.username,
+            readyTimeout: 30000,
+            keepaliveInterval: 15000,
+            keepaliveCountMax: 3,
+            tryKeyboard: true,
+            algorithms: {
+              kex: ['ecdh-sha2-nistp256', 'ecdh-sha2-nistp384', 'ecdh-sha2-nistp521', 'diffie-hellman-group14-sha256', 'diffie-hellman-group16-sha512', 'diffie-hellman-group-exchange-sha256'],
+              cipher: ['aes128-ctr', 'aes192-ctr', 'aes256-ctr', 'aes128-cbc', 'aes192-cbc', 'aes256-cbc']
+            }
+          };
+          if (config.privateKey) connectOptions.privateKey = config.privateKey;
+          else connectOptions.password = config.password;
+          sshClient.connect(connectOptions);
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), { status: 500 });
       }
     }
 
@@ -336,7 +529,7 @@ export default {
       });
     }
 
-    // 6. WebSocket 協議轉換為 TCP SFTP 檔案傳輸橋接 (新增)
+    // 6. WebSocket 協議轉換為 TCP SFTP 檔案傳輸橋接
     if (url.pathname.startsWith('/sftp/') && request.headers.get('Upgrade') === 'websocket') {
       const id = url.pathname.split('/').pop();
       const connectionVal = await env.WEBSSH_KV.get(`connection:${id}`);
@@ -362,7 +555,6 @@ export default {
             return;
           }
           sftpClient = sftp;
-          // 通知前端 SFTP 連線就緒
           server.send(JSON.stringify({ status: 'ready' }));
         });
       });
@@ -372,9 +564,7 @@ export default {
         server.close(1011);
       });
 
-      // 監聽傳輸封包
       server.addEventListener('message', async (event) => {
-        // 如果接收到的是二進位 ArrayBuffer，代表檔案區塊 (Chunk) 資料
         if (event.data instanceof ArrayBuffer) {
           if (sftpStream) {
             const chunk = new Uint8Array(event.data);
@@ -384,7 +574,6 @@ export default {
                 server.close(1011);
                 return;
               }
-              // 回傳寫入確認 (ack)，藉此控制傳輸背壓與精準計量進度
               server.send(JSON.stringify({ status: 'ack', written: chunk.length }));
             });
           } else {
@@ -393,11 +582,10 @@ export default {
           return;
         }
 
-        // 處理 JSON 控制指令
         try {
           const msg = JSON.parse(event.data);
           if (msg.action === 'upload') {
-            const remotePath = `./${msg.filename}`; // 上傳至該使用者的家目錄
+            const remotePath = `./${msg.filename}`;
             sftpStream = sftpClient.createWriteStream(remotePath, { flags: 'w', mode: 0o644 });
             
             sftpStream.on('error', (err) => {
@@ -439,22 +627,8 @@ export default {
           keepaliveCountMax: 3,
           tryKeyboard: true,
           algorithms: {
-            kex: [
-              'ecdh-sha2-nistp256',
-              'ecdh-sha2-nistp384',
-              'ecdh-sha2-nistp521',
-              'diffie-hellman-group14-sha256',
-              'diffie-hellman-group16-sha512',
-              'diffie-hellman-group-exchange-sha256'
-            ],
-            cipher: [
-              'aes128-ctr',
-              'aes192-ctr',
-              'aes256-ctr',
-              'aes128-cbc',
-              'aes192-cbc',
-              'aes256-cbc'
-            ]
+            kex: ['ecdh-sha2-nistp256', 'ecdh-sha2-nistp384', 'ecdh-sha2-nistp521', 'diffie-hellman-group14-sha256', 'diffie-hellman-group16-sha512', 'diffie-hellman-group-exchange-sha256'],
+            cipher: ['aes128-ctr', 'aes192-ctr', 'aes256-ctr', 'aes128-cbc', 'aes192-cbc', 'aes256-cbc']
           }
         };
 
