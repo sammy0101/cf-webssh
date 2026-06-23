@@ -222,7 +222,7 @@
     let ws = null;
     let term = null;
     let fitAddon = null;
-    let sftpWs = null;               // 單一、永久活耀的 SFTP WebSocket 通道 (核心優化)
+    let sftpWs = null;               // 單一、永久活耀的 SFTP WebSocket 通道
     let sftpUploadCancelled = false; // 是否取消傳輸標記
     let activeConnectionId = null;   // 當前終端連線伺服器 ID
     let sftpCurrentPath = '.';       // 當前檔案管理器絕對路徑
@@ -486,7 +486,7 @@
             // 等待一小段時間確保連線建立
             setTimeout(() => {
               handleSftpUpload(connectionId, files[0]);
-            }, 800);
+            }, 1000);
           } else {
             handleSftpUpload(connectionId, files[0]);
           }
@@ -508,7 +508,7 @@
       }
     }
 
-    // 6. 建立單一 SFTP WebSocket 安全連線 (核心優化)
+    // 6. 建立單一 SFTP WebSocket 安全連線 (修復非同步競合 Race Condition)
     function connectSftpWebSocket() {
       if (!activeConnectionId) return;
       const fileListContainer = document.getElementById('sftp-file-list');
@@ -520,9 +520,10 @@
       sftpWs.binaryType = 'arraybuffer';
 
       sftpWs.onopen = () => {
-        // 安全連線就緒，載入預設的相對路徑目錄
+        // WebSocket 通道已開啟，但遠端 SSH-SFTP 握手尚未完成。
+        // 此處僅變更提示狀態，等待後端傳送「ready」信號再進行資料載入。
         sftpCurrentPath = '.';
-        sftpWs.send(JSON.stringify({ action: 'list', path: sftpCurrentPath }));
+        fileListContainer.innerHTML = '<div class="text-slate-500 text-center py-8">正在連線遠端伺服器 (SSH)...</div>';
       };
 
       sftpWs.onmessage = async (event) => {
@@ -539,19 +540,29 @@
           return;
         }
 
-        // II. 處理 JSON 控制回饋指令
+        // II. 處理 JSON 格式控制回饋指令
         try {
           const msg = JSON.parse(event.data);
 
           if (msg.status === 'error') {
             alert(`SFTP 操作失敗: ${msg.message}`);
             closeUploadOverlay();
-            refreshSftpList();
+            // 如果是在初始載入時出錯，更新介面狀態
+            if (fileListContainer.innerHTML.includes('正在')) {
+               fileListContainer.innerHTML = `<div class="text-rose-400 p-4 text-center">連線失敗: ${msg.message}</div>`;
+            } else {
+               refreshSftpList();
+            }
             return;
           }
 
+          // 新增：當後端 SSH 和 SFTP 元件完全就緒後，再發送首個目錄列表要求 (徹底根除 null realpath 錯誤)
+          if (msg.status === 'ready') {
+            sftpWs.send(JSON.stringify({ action: 'list', path: sftpCurrentPath }));
+          }
+
           // A. 檔案清單渲染
-          if (msg.status === 'list') {
+          else if (msg.status === 'list') {
             sftpCurrentPath = msg.path;
             document.getElementById('sftp-current-path').value = sftpCurrentPath;
             renderSftpFiles(msg.files);
