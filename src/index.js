@@ -115,14 +115,23 @@ export default {
             return;
           }
           sshStream = stream;
+          server.send('\r\n[SSH] 終端已就緒\r\n');
 
           stream.on('data', (data) => {
-            server.send(data);
+            try {
+              server.send(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+            } catch (e) {
+              server.send(String(data));
+            }
           });
 
           if (stream.stderr) {
             stream.stderr.on('data', (data) => {
-              server.send(data);
+              try {
+                server.send(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+              } catch (e) {
+                server.send(String(data));
+              }
             });
           }
 
