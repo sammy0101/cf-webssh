@@ -163,6 +163,24 @@ export default {
           host: config.host,
           port: config.port || 22,
           username: config.username,
+          algorithms: {
+            kex: [
+              'ecdh-sha2-nistp256',
+              'ecdh-sha2-nistp384',
+              'ecdh-sha2-nistp521',
+              'diffie-hellman-group14-sha256',
+              'diffie-hellman-group14-sha1',
+            ],
+            hostKey: [
+              'ssh-ed25519',
+              'ecdsa-sha2-nistp256',
+              'ecdsa-sha2-nistp384',
+              'ecdsa-sha2-nistp521',
+              'rsa-sha2-512',
+              'rsa-sha2-256',
+              'ssh-rsa',
+            ],
+          },
         };
 
         if (config.privateKey) {
