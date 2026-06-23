@@ -27,7 +27,6 @@ const ignoreNodeExtensionsPlugin = {
 };
 
 // 撰寫具備高度診斷與防禦機制的 Banner 代碼
-// 包含自動補齊 ESM Namespace Object 所缺少的 hasOwnProperty 方法
 const bannerJs = `import { createRequire } from 'node:module';
 const __filename = 'index.js';
 const __dirname = '/';
@@ -41,67 +40,77 @@ const require = (name) => {
 
   let res;
   try {
-    res = _origRequire(nodeBuiltins.includes(name) ? 'node:' + name : name);
+    res = _origRequire(name);
   } catch (err) {
-    console.error('=================== [WEBSSH-REQUIRE] ===================');
-    console.error('Cannot load module:', name, err.message);
-    console.error('=========================================================');
-    return new Proxy({}, {
-      get: (target, prop) => {
-        if (prop === 'then') return undefined;
-        if (prop === 'hasOwnProperty') return () => false;
-        return () => {};
-      }
-    });
+    try {
+      res = _origRequire('node:' + name);
+    } catch (err2) {
+      return new Proxy({}, {
+        get: (t, p) => {
+          if (p === 'then') return undefined;
+          if (p === 'hasOwnProperty') return () => false;
+          return () => {};
+        }
+      });
+    }
   }
 
-  if (res && typeof res === 'object' && typeof res !== 'function') {
-    const baseName = name.replace(/^node:/, '');
-
-    if (res.default && typeof res.default === 'function') {
-      const main = res.default;
-      for (const key of Object.keys(res)) {
-        if (key !== 'default' && !(key in main)) {
-          try { main[key] = res[key]; } catch(e) {}
-        }
-      }
-      if (typeof main.hasOwnProperty !== 'function') {
-        main.hasOwnProperty = Object.prototype.hasOwnProperty.bind(main);
-      }
-      return main;
+  if (typeof res === 'function') {
+    if (typeof res.hasOwnProperty !== 'function') {
+      res.hasOwnProperty = Object.prototype.hasOwnProperty.bind(res);
     }
-
-    if (res[baseName] && typeof res[baseName] === 'function') {
-      const main = res[baseName];
-      for (const key of Object.keys(res)) {
-        if (key !== baseName && !(key in main)) {
-          try { main[key] = res[key]; } catch(e) {}
-        }
-      }
-      if (typeof main.hasOwnProperty !== 'function') {
-        main.hasOwnProperty = Object.prototype.hasOwnProperty.bind(main);
-      }
-      return main;
-    }
-
-    const dummy = function() {};
-    for (const key of Object.keys(res)) {
-      try { dummy[key] = res[key]; } catch(e) {}
-    }
-    if (typeof dummy.hasOwnProperty !== 'function') {
-      dummy.hasOwnProperty = Object.prototype.hasOwnProperty.bind(dummy);
-    }
-    return dummy;
+    return res;
   }
 
-  if (res && typeof res === 'object' && typeof res.hasOwnProperty !== 'function') {
-    return new Proxy(res, {
-      get(target, prop) {
-        if (prop === 'hasOwnProperty') return Object.prototype.hasOwnProperty.bind(target);
-        if (prop === 'toString') return Object.prototype.toString.bind(target);
-        return target[prop];
+  if (res && typeof res === 'object') {
+    const needsUnwrap = (res[Symbol.toStringTag] === 'Module')
+      || (typeof res.hasOwnProperty !== 'function');
+
+    if (needsUnwrap) {
+      const ns = res;
+      const baseName = name.replace(/^node:/, '');
+      let ctor = null;
+
+      if (typeof ns.default === 'function') {
+        ctor = ns.default;
+      } else if (typeof ns[baseName] === 'function') {
+        ctor = ns[baseName];
+      } else {
+        const pascal = baseName.charAt(0).toUpperCase() + baseName.slice(1);
+        if (typeof ns[pascal] === 'function') ctor = ns[pascal];
       }
-    });
+
+      if (ctor) {
+        for (const key of Object.getOwnPropertyNames(ns)) {
+          if (key !== 'default' && key !== '__esModule' && !(key in ctor)) {
+            try { ctor[key] = ns[key]; } catch(e) {}
+          }
+        }
+        if (typeof ctor.hasOwnProperty !== 'function') {
+          ctor.hasOwnProperty = Object.prototype.hasOwnProperty.bind(ctor);
+        }
+        return ctor;
+      }
+
+      const wrapper = function() {};
+      if (ctor === null) {
+        wrapper.prototype = Object.create(Object.prototype);
+      }
+      for (const key of Object.getOwnPropertyNames(ns)) {
+        if (key !== '__esModule' && key !== 'constructor') {
+          try { wrapper[key] = ns[key]; } catch(e) {}
+        }
+      }
+      if (typeof wrapper.hasOwnProperty !== 'function') {
+        wrapper.hasOwnProperty = Object.prototype.hasOwnProperty.bind(wrapper);
+      }
+      return wrapper;
+    }
+
+    if (typeof res.hasOwnProperty !== 'function') {
+      res.hasOwnProperty = Object.prototype.hasOwnProperty.bind(res);
+    }
+    return res;
   }
 
   return res;
