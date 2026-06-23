@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Tue Jun 23 19:02:39 UTC 2026
+Generated on: Tue Jun 23 19:10:35 UTC 2026
 
 ## File: README.md
 ````md
@@ -834,8 +834,8 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
          </div>
       </div>
 
-      <!-- 右側 SFTP 檔案管理器側邊欄容器 -->
-      <div id="sftp-sidebar" class="w-80 bg-slate-900 border-l border-slate-800 flex flex-col hidden transition-all duration-300">
+      <!-- 右側 SFTP 檔案管理器側邊欄容器（將 hidden 改為 style 預設隱藏，消除框架樣式衝突） -->
+      <div id="sftp-sidebar" class="w-80 bg-slate-900 border-l border-slate-800 flex flex-col transition-all duration-300" style="display: none;">
         <!-- 側邊欄標題 -->
         <div class="p-3 border-b border-slate-800 flex justify-between items-center bg-slate-950">
           <h3 class="font-bold text-emerald-400 text-sm flex items-center gap-1.5">
@@ -1234,7 +1234,7 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
             return;
           }
 
-          // 新增：當後端 SSH 和 SFTP 元件完全就緒後，再發送首個目錄列表要求 (徹底根除 null realpath 錯誤)
+          // 新增：當後端 SSH 和 SFTP 元件完全就緒後，再發送首個目錄列表要求
           if (msg.status === 'ready') {
             sftpWs.send(JSON.stringify({ action: 'list', path: sftpCurrentPath }));
           }
@@ -1326,18 +1326,16 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
       }
     }
 
-    // 6.1 開關檔案管理器側邊欄 (優化 resize 體驗)
+    // 6.1 開關檔案管理器側邊欄 (修改：完全使用原生內聯樣式控制，徹底避免 Tailwind 優先級衝突)
     function toggleSftpSidebar() {
       const sidebar = document.getElementById('sftp-sidebar');
       sftpSidebarOpen = !sftpSidebarOpen;
       
       if (sftpSidebarOpen) {
-        sidebar.classList.remove('hidden');
-        sidebar.classList.add('flex');
+        sidebar.style.display = 'flex'; // 原生強制顯示
         connectSftpWebSocket();
       } else {
-        sidebar.classList.add('hidden');
-        sidebar.classList.remove('flex');
+        sidebar.style.display = 'none'; // 原生強制隱藏
         disconnectSftpWebSocket();
       }
       
