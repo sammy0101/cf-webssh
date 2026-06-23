@@ -106,12 +106,8 @@ export default {
       let sshStream = null;
 
       sshClient.on('ready', () => {
-        const shellOpts = {
-          term: 'xterm-256color',
-          cols: 80,
-          rows: 24,
-        };
-        sshClient.shell(shellOpts, (err, stream) => {
+        server.send('\r\n[SSH] 已連線，正在啟動終端...\r\n');
+        sshClient.exec('bash --login', { pty: { term: 'xterm-256color', cols: 80, rows: 24 } }, (err, stream) => {
           if (err) {
             server.send(`\r\n[SSH Shell 啟動失敗]: ${err.message}\r\n`);
             server.close(1011);
@@ -144,6 +140,10 @@ export default {
         server.close();
       });
 
+      sshClient.on('keyboard-interactive', (name, instructions, lang, prompts, finish) => {
+        finish([config.password || '']);
+      });
+
       // 監聽前端 WebSocket 訊息
       server.addEventListener('message', (event) => {
         try {
@@ -172,6 +172,10 @@ export default {
           host: config.host,
           port: config.port || 22,
           username: config.username,
+          readyTimeout: 30000,
+          keepaliveInterval: 15000,
+          keepaliveCountMax: 3,
+          tryKeyboard: true,
           algorithms: {
             kex: [
               'ecdh-sha2-nistp256',
