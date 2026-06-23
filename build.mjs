@@ -35,21 +35,17 @@ const _origRequire = createRequire(import.meta.url || 'file:///index.js');
 const require = (name) => {
   const nodeBuiltins = ['assert', 'buffer', 'child_process', 'cluster', 'console', 'constants', 'crypto', 'dgram', 'dns', 'domain', 'events', 'fs', 'http', 'http2', 'https', 'inspector', 'module', 'net', 'os', 'path', 'perf_hooks', 'process', 'punycode', 'querystring', 'readline', 'repl', 'stream', 'string_decoder', 'sys', 'timers', 'tls', 'trace_events', 'tty', 'url', 'util', 'v8', 'vm', 'wasi', 'worker_threads', 'zlib'];
   
-  // 1. 阻斷不支援的進程管理模組
   if (name === 'child_process' || name === 'node:child_process') {
     return { spawn: () => {}, exec: () => {}, execFile: () => {}, fork: () => {} };
   }
 
   let res;
   try {
-    // 2. 自動為內建模組加上 node: 前綴並載入
     res = _origRequire(nodeBuiltins.includes(name) ? 'node:' + name : name);
   } catch (err) {
-    console.error('=================== [WEBSSH-REQUIRE 診斷日誌] ===================');
-    console.error('【加載異常】：無法在 Cloudflare Workers 環境加載模組 ->', name);
-    console.error('【底層錯誤】：', err.stack || err.message || err);
-    console.error('================================================================');
-    
+    console.error('=================== [WEBSSH-REQUIRE] ===================');
+    console.error('Cannot load module:', name, err.message);
+    console.error('=========================================================');
     return new Proxy({}, {
       get: (target, prop) => {
         if (prop === 'then') return undefined;
@@ -59,17 +55,50 @@ const require = (name) => {
     });
   }
 
-  // 3. 核心修復：Cloudflare 回傳的 ESM Namespace Object 沒有 hasOwnProperty
-  // 攔截屬性讀取，將缺失的原型方法補齊，防止 safer-buffer 等老舊庫報錯
+  if (res && typeof res === 'object' && typeof res !== 'function') {
+    const baseName = name.replace(/^node:/, '');
+
+    if (res.default && typeof res.default === 'function') {
+      const main = res.default;
+      for (const key of Object.keys(res)) {
+        if (key !== 'default' && !(key in main)) {
+          try { main[key] = res[key]; } catch(e) {}
+        }
+      }
+      if (typeof main.hasOwnProperty !== 'function') {
+        main.hasOwnProperty = Object.prototype.hasOwnProperty.bind(main);
+      }
+      return main;
+    }
+
+    if (res[baseName] && typeof res[baseName] === 'function') {
+      const main = res[baseName];
+      for (const key of Object.keys(res)) {
+        if (key !== baseName && !(key in main)) {
+          try { main[key] = res[key]; } catch(e) {}
+        }
+      }
+      if (typeof main.hasOwnProperty !== 'function') {
+        main.hasOwnProperty = Object.prototype.hasOwnProperty.bind(main);
+      }
+      return main;
+    }
+
+    const dummy = function() {};
+    for (const key of Object.keys(res)) {
+      try { dummy[key] = res[key]; } catch(e) {}
+    }
+    if (typeof dummy.hasOwnProperty !== 'function') {
+      dummy.hasOwnProperty = Object.prototype.hasOwnProperty.bind(dummy);
+    }
+    return dummy;
+  }
+
   if (res && typeof res === 'object' && typeof res.hasOwnProperty !== 'function') {
     return new Proxy(res, {
       get(target, prop) {
-        if (prop === 'hasOwnProperty') {
-          return Object.prototype.hasOwnProperty.bind(target);
-        }
-        if (prop === 'toString') {
-          return Object.prototype.toString.bind(target);
-        }
+        if (prop === 'hasOwnProperty') return Object.prototype.hasOwnProperty.bind(target);
+        if (prop === 'toString') return Object.prototype.toString.bind(target);
         return target[prop];
       }
     });
