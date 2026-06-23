@@ -39,9 +39,9 @@ try {
       ...nodeBuiltins,
       ...nodeBuiltins.map(name => `node:${name}`)
     ],
-    // 注入 banner：將 'module' 改為帶有 'node:' 前綴的 'node:module'
+    // 注入帶有相容性備用路徑的 Banner，防範 Workers 環境下 import.meta.url 為 undefined 的問題
     banner: {
-      js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);",
+      js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url || 'file:///index.js');",
     },
     plugins: [ignoreNodeExtensionsPlugin],
     loader: {
