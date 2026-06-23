@@ -26,6 +26,15 @@ const ignoreNodeExtensionsPlugin = {
   },
 };
 
+// 撰寫自訂的 Banner 代碼
+// 當第三方套件動態 require('net') 時，我們將其強制改寫為 require('node:net')，使其符合 Workers 規範
+const bannerJs = `import { createRequire } from 'node:module';
+const _origRequire = createRequire(import.meta.url || 'file:///index.js');
+const require = (name) => {
+  const nodeBuiltins = ['assert', 'buffer', 'child_process', 'cluster', 'console', 'constants', 'crypto', 'dgram', 'dns', 'domain', 'events', 'fs', 'http', 'http2', 'https', 'inspector', 'module', 'net', 'os', 'path', 'perf_hooks', 'process', 'punycode', 'querystring', 'readline', 'repl', 'stream', 'string_decoder', 'sys', 'timers', 'tls', 'trace_events', 'tty', 'url', 'util', 'v8', 'vm', 'wasi', 'worker_threads', 'zlib'];
+  return _origRequire(nodeBuiltins.includes(name) ? 'node:' + name : name);
+};`;
+
 try {
   await esbuild.build({
     entryPoints: ['src/index.js'],
@@ -39,9 +48,8 @@ try {
       ...nodeBuiltins,
       ...nodeBuiltins.map(name => `node:${name}`)
     ],
-    // 注入帶有相容性備用路徑的 Banner，防範 Workers 環境下 import.meta.url 為 undefined 的問題
     banner: {
-      js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url || 'file:///index.js');",
+      js: bannerJs,
     },
     plugins: [ignoreNodeExtensionsPlugin],
     loader: {
