@@ -106,12 +106,18 @@ export default {
       let sshStream = null;
 
       sshClient.on('ready', () => {
-        try {
-          const stream = sshClient.shell({
-            term: 'xterm-256color',
-            cols: 80,
-            rows: 24,
-          });
+        const shellOpts = {
+          term: 'xterm-256color',
+          cols: 80,
+          rows: 24,
+        };
+        sshClient.shell(shellOpts, (err, stream) => {
+          if (err) {
+            server.send(`\r\n[SSH Shell 啟動失敗]: ${err.message}\r\n`);
+            server.close(1011);
+            sshClient.end();
+            return;
+          }
           sshStream = stream;
 
           stream.on('data', (data) => {
@@ -126,17 +132,7 @@ export default {
             server.close();
             sshClient.end();
           });
-
-          stream.on('error', (err) => {
-            server.send(`\r\n[Shell Error]: ${err.message}\r\n`);
-            server.close(1011);
-            sshClient.end();
-          });
-        } catch (err) {
-          server.send(`\r\n[SSH Shell 啟動失敗]: ${err.message}\r\n`);
-          server.close(1011);
-          sshClient.end();
-        }
+        });
       });
 
       sshClient.on('error', (err) => {
