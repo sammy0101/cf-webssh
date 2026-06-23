@@ -1,7 +1,7 @@
 name = "cf-webssh"
 main = "dist/index.js"
-# 將日期更新至 2025-01-01，以原生啟用完整版的 node:net/dns 相容層
-compatibility_date = "2025-01-01"
+# 升級相容性日期至 2026-01-01，以原生啟用 node:fs 與其他現代 Node.js 模組
+compatibility_date = "2026-01-01"
 compatibility_flags = [ "nodejs_compat" ]
 
 [[kv_namespaces]]
