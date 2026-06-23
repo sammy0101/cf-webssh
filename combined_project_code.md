@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Tue Jun 23 17:43:13 UTC 2026
+Generated on: Tue Jun 23 17:43:44 UTC 2026
 
 ## File: README.md
 ````md
@@ -309,7 +309,7 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
   <!-- 新增/編輯 Modal -->
   <div id="modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-40">
     <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-lg shadow-2xl">
-      <h2 class="text-xl font-bold mb-4 text-emerald-400">連線設定</h2>
+      <h2 id="modal-title" class="text-xl font-bold mb-4 text-emerald-400">連線設定</h2>
       <form id="connection-form" onsubmit="saveConnection(event)">
         <input type="hidden" id="conn-id">
         <div class="space-y-4">
@@ -397,6 +397,7 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
               <p class="text-sm text-slate-400 font-mono mt-1">${conn.username}@${conn.host}:${conn.port}</p>
             </div>
             <div class="mt-5 flex justify-end space-x-2">
+              <button onclick="editConnection('${conn.id}', '${conn.name}', '${conn.host}', ${conn.port}, '${conn.username}', '${conn.authType}')" class="text-indigo-400 hover:text-indigo-300 px-3 py-1.5 text-sm transition">編輯</button>
               <button onclick="deleteConnection('${conn.id}')" class="text-rose-400 hover:text-rose-300 px-3 py-1.5 text-sm transition">刪除</button>
               <button onclick="connectSSH('${conn.id}', '${conn.name}')" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-1.5 rounded text-sm font-medium transition">連線</button>
             </div>
@@ -411,6 +412,29 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
     function showAddModal() {
       document.getElementById('connection-form').reset();
       document.getElementById('conn-id').value = '';
+      document.getElementById('modal-title').textContent = '新增連線設定';
+      document.getElementById('conn-password').placeholder = '';
+      document.getElementById('conn-privatekey').placeholder = '-----BEGIN OPENSSH PRIVATE KEY-----';
+      document.getElementById('modal').classList.remove('hidden');
+      document.getElementById('modal').classList.add('flex');
+      toggleAuthType();
+    }
+
+    function editConnection(id, name, host, port, username, authType) {
+      document.getElementById('conn-id').value = id;
+      document.getElementById('conn-name').value = name;
+      document.getElementById('conn-host').value = host;
+      document.getElementById('conn-port').value = port;
+      document.getElementById('conn-username').value = username;
+      document.getElementById('conn-auth-type').value = authType;
+      
+      document.getElementById('modal-title').textContent = '編輯連線設定';
+      // 提醒使用者如果不修改密碼/私鑰，可維持留白
+      document.getElementById('conn-password').value = '';
+      document.getElementById('conn-privatekey').value = '';
+      document.getElementById('conn-password').placeholder = '留空表示不修改原設定';
+      document.getElementById('conn-privatekey').placeholder = '留空表示不修改原設定';
+
       document.getElementById('modal').classList.remove('hidden');
       document.getElementById('modal').classList.add('flex');
       toggleAuthType();
@@ -442,10 +466,19 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
       const authType = document.getElementById('conn-auth-type').value;
 
       const body = { id, name, host, port, username };
+      
       if (authType === 'password') {
-        body.password = document.getElementById('conn-password').value;
+        const passwordVal = document.getElementById('conn-password').value;
+        if (passwordVal || !id) {
+          body.password = passwordVal;
+          body.privateKey = ''; // 若切換成密碼驗證，清空私鑰
+        }
       } else {
-        body.privateKey = document.getElementById('conn-privatekey').value;
+        const privateKeyVal = document.getElementById('conn-privatekey').value;
+        if (privateKeyVal || !id) {
+          body.privateKey = privateKeyVal;
+          body.password = ''; // 若切換成私鑰驗證，清空密碼
+        }
       }
 
       await fetch('/api/connections', {
@@ -492,6 +525,7 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
       const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
       const wsUrl = `${protocol}${window.location.host}/ssh/${id}`;
       ws = new WebSocket(wsUrl);
+      ws.binaryType = 'arraybuffer'; // 確保解析二進位數據正常
 
       ws.onopen = () => {
         term.write('\r\n[CF-WebSSH]: 已成功建立通訊隧道，正在連線遠端伺服器...\r\n');
@@ -500,7 +534,11 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
       };
 
       ws.onmessage = (event) => {
-        term.write(event.data);
+        if (event.data instanceof ArrayBuffer) {
+          term.write(new Uint8Array(event.data));
+        } else {
+          term.write(event.data);
+        }
       };
 
       ws.onclose = () => {
