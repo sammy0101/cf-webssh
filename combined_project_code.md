@@ -1,11 +1,11 @@
 # Complete Project Codebase
-Generated on: Tue Jun 23 18:10:30 UTC 2026
+Generated on: Tue Jun 23 18:11:41 UTC 2026
 
 ## File: README.md
 ````md
 # cf-webssh
 
-一個基於 Cloudflare Workers (`workerd`) 平台構建的輕量級 WebSSH 工具。
+一個基於 Cloudflare Workers 平台構建的輕量級 WebSSH 工具。
 
 本專案利用 Cloudflare 原生 TCP 接口（透過相容性標誌 `nodejs_compat` 啟用 `cloudflare:sockets`）與遠端主機建立安全的 SSH 通道，並在瀏覽器前端使用 `xterm.js` 提供高度互動性的終端體驗。
 
