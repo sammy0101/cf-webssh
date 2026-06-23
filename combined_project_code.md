@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Tue Jun 23 18:11:41 UTC 2026
+Generated on: Tue Jun 23 18:14:39 UTC 2026
 
 ## File: README.md
 ````md
@@ -84,9 +84,51 @@ Generated on: Tue Jun 23 18:11:41 UTC 2026
 import { Client } from 'ssh2';
 import htmlContent from '../public/index.html';
 
+// 使用 WebCrypto 計算 SHA-256 雜湊值
+async function hashPassword(password) {
+  const msgBuffer = new TextEncoder().encode(password);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// 根據環境變數中的密碼加鹽計算預期 Token
+async function getExpectedToken(adminPassword) {
+  return await hashPassword(adminPassword + "cf-webssh-salt-2026");
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+
+    // 讀取環境變數中的管理密碼
+    const adminPassword = env.ADMIN_PASSWORD;
+    const isAuthEnabled = typeof adminPassword === 'string' && adminPassword.length > 0;
+
+    // Cookie 讀取輔助函數
+    const getCookie = (name) => {
+      const value = `; ${request.headers.get('Cookie') || ''}`;
+      const parts = value.split(`; ${name}=`);
+      if (parts.length === 2) return parts.pop().split(';').shift();
+      return null;
+    };
+
+    // 驗證當前連線是否已授權
+    const isAuthorized = async () => {
+      if (!isAuthEnabled) return true;
+      const token = getCookie('webssh_token');
+      if (!token) return false;
+      const expected = await getExpectedToken(adminPassword);
+      return token === expected;
+    };
+
+    // 安全防禦門禁：若啟用密碼驗證且未授權，阻擋所有非公開路徑
+    const publicPaths = ['/', '/index.html', '/api/login', '/api/auth-check', '/api/logout'];
+    if (!publicPaths.includes(url.pathname)) {
+      if (!(await isAuthorized())) {
+        return new Response('Unauthorized', { status: 401 });
+      }
+    }
 
     // 1. 靜態網頁派發
     if (url.pathname === '/' || url.pathname === '/index.html') {
@@ -95,13 +137,58 @@ export default {
       });
     }
 
-    // 2. API: 獲取已儲存的連線列表 (不返回敏感的密碼與私鑰，但標記其認證類型)
+    // 1.1 API: 檢查當前驗證狀態
+    if (url.pathname === '/api/auth-check' && request.method === 'GET') {
+      const authorized = await isAuthorized();
+      return new Response(JSON.stringify({
+        required: isAuthEnabled,
+        authenticated: authorized
+      }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // 1.2 API: 登入驗證
+    if (url.pathname === '/api/login' && request.method === 'POST') {
+      try {
+        const { password } = await request.json();
+        if (isAuthEnabled && password === adminPassword) {
+          const token = await getExpectedToken(adminPassword);
+          // 設定 HttpOnly, Secure, SameSite=Strict 且 30 天內有效的 Cookie
+          return new Response(JSON.stringify({ success: true }), {
+            headers: {
+              'Content-Type': 'application/json',
+              'Set-Cookie': `webssh_token=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=2592000`
+            }
+          });
+        }
+        return new Response(JSON.stringify({ error: '密碼錯誤' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
+    // 1.3 API: 登出
+    if (url.pathname === '/api/logout' && request.method === 'POST') {
+      return new Response(JSON.stringify({ success: true }), {
+        headers: {
+          'Content-Type': 'application/json',
+          'Set-Cookie': 'webssh_token=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0'
+        }
+      });
+    }
+
+    // 2. API: 獲取已儲存的連線列表
     if (url.pathname === '/api/connections' && request.method === 'GET') {
       try {
         const list = await env.WEBSSH_KV.list({ prefix: 'connection:' });
         const keys = list.keys;
-        
-        // 使用 Promise.all 併發讀取，優化效能
         const values = await Promise.all(keys.map(key => env.WEBSSH_KV.get(key.name)));
         const connections = [];
 
@@ -114,7 +201,7 @@ export default {
               host: data.host,
               port: data.port || 22,
               username: data.username,
-              authType: data.privateKey ? 'key' : 'password', // 用於前端判斷認證模式
+              authType: data.privateKey ? 'key' : 'password',
             });
           }
         }
@@ -129,7 +216,7 @@ export default {
       }
     }
 
-    // 3. API: 新增/更新連線資訊 (支援局部更新保留舊密碼/私鑰)
+    // 3. API: 新增/更新連線資訊
     if (url.pathname === '/api/connections' && request.method === 'POST') {
       try {
         const data = await request.json();
@@ -141,7 +228,6 @@ export default {
         }
         const id = data.id || crypto.randomUUID();
 
-        // 讀取現有配置進行安全合併
         const existingVal = await env.WEBSSH_KV.get(`connection:${id}`);
         let existing = {};
         if (existingVal) {
@@ -156,7 +242,6 @@ export default {
           host: data.host,
           port: parseInt(data.port) || 22,
           username: data.username,
-          // 若沒傳入相關敏感欄位，則保留原本保存在 KV 的密碼/私鑰
           password: data.password !== undefined ? data.password : (existing.password || ''),
           privateKey: data.privateKey !== undefined ? data.privateKey : (existing.privateKey || ''),
         };
@@ -204,16 +289,14 @@ export default {
 
       const sshClient = new Client();
       let sshStream = null;
-      let pendingResize = null; // 用來存取在 Stream 尚未就緒時前端發送的縮放設定
+      let pendingResize = null;
 
       sshClient.on('ready', () => {
         server.send('\r\n[SSH] 已連線，正在啟動終端...\r\n');
         
-        // 使用前端已發送的視窗大小，或預設 80x24
         const initialCols = pendingResize ? pendingResize.cols : 80;
         const initialRows = pendingResize ? pendingResize.rows : 24;
 
-        // 使用互動式 shell 建立終端連線
         sshClient.shell({ term: 'xterm-256color', cols: initialCols, rows: initialRows }, (err, stream) => {
           if (err) {
             server.send(`\r\n[SSH Shell 啟動失敗]: ${err.message}\r\n`);
@@ -266,7 +349,6 @@ export default {
         finish([config.password || '']);
       });
 
-      // 監聽前端 WebSocket 訊息
       server.addEventListener('message', (event) => {
         try {
           const msg = JSON.parse(event.data);
@@ -274,14 +356,12 @@ export default {
             if (sshStream) {
               sshStream.setWindow(msg.rows, msg.cols);
             } else {
-              // 終端未啟動時，先儲存視窗縮放設定
               pendingResize = { rows: msg.rows, cols: msg.cols };
             }
           } else if (msg.type === 'data' && sshStream) {
             sshStream.write(msg.data);
           }
         } catch (e) {
-          // 相容寫入原始字串資料
           if (sshStream) {
             sshStream.write(event.data);
           }
@@ -302,7 +382,6 @@ export default {
           keepaliveCountMax: 3,
           tryKeyboard: true,
           algorithms: {
-            // 1. 設定金鑰交換演算法，主動排除 curve25519 
             kex: [
               'ecdh-sha2-nistp256',
               'ecdh-sha2-nistp384',
@@ -311,7 +390,6 @@ export default {
               'diffie-hellman-group16-sha512',
               'diffie-hellman-group-exchange-sha256'
             ],
-            // 2. 限制對稱加密演算法，排除 AEAD 模式 (chacha20-poly1305, aes-gcm)，避免 workerd 串流解密相容性問題
             cipher: [
               'aes128-ctr',
               'aes192-ctr',
@@ -329,7 +407,6 @@ export default {
           connectOptions.password = config.password;
         }
 
-        // 開始建立 SSH 連線
         sshClient.connect(connectOptions);
       } catch (err) {
         server.send(`\r\n[SSH 初始化錯誤]: ${err.message}\r\n`);
