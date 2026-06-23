@@ -218,8 +218,8 @@ export default {
           keepaliveInterval: 15000,
           keepaliveCountMax: 3,
           tryKeyboard: true,
-          // 設定金鑰交換演算法，主動排除 curve25519 以避免 Workers 相容性 Bug
           algorithms: {
+            // 1. 設定金鑰交換演算法，主動排除 curve25519 
             kex: [
               'ecdh-sha2-nistp256',
               'ecdh-sha2-nistp384',
@@ -227,6 +227,15 @@ export default {
               'diffie-hellman-group14-sha256',
               'diffie-hellman-group16-sha512',
               'diffie-hellman-group-exchange-sha256'
+            ],
+            // 2. 限制對稱加密演算法，排除 AEAD 模式 (chacha20-poly1305, aes-gcm)，避免 workerd 串流解密相容性問題
+            cipher: [
+              'aes128-ctr',
+              'aes192-ctr',
+              'aes256-ctr',
+              'aes128-cbc',
+              'aes192-cbc',
+              'aes256-cbc'
             ]
           }
         };
