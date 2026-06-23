@@ -180,6 +180,15 @@ export default {
               'rsa-sha2-256',
               'ssh-rsa',
             ],
+            cipher: [
+              'aes128-ctr',
+              'aes192-ctr',
+              'aes256-ctr',
+              'aes128-cbc',
+              'aes192-cbc',
+              'aes256-cbc',
+              '3des-cbc',
+            ],
           },
         };
 
