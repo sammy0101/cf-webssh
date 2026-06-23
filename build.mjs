@@ -29,6 +29,8 @@ const ignoreNodeExtensionsPlugin = {
 // 撰寫具備高度診斷與防禦機制的 Banner 代碼
 // 包含自動補齊 ESM Namespace Object 所缺少的 hasOwnProperty 方法
 const bannerJs = `import { createRequire } from 'node:module';
+const __filename = 'index.js';
+const __dirname = '/';
 const _origRequire = createRequire(import.meta.url || 'file:///index.js');
 const require = (name) => {
   const nodeBuiltins = ['assert', 'buffer', 'child_process', 'cluster', 'console', 'constants', 'crypto', 'dgram', 'dns', 'domain', 'events', 'fs', 'http', 'http2', 'https', 'inspector', 'module', 'net', 'os', 'path', 'perf_hooks', 'process', 'punycode', 'querystring', 'readline', 'repl', 'stream', 'string_decoder', 'sys', 'timers', 'tls', 'trace_events', 'tty', 'url', 'util', 'v8', 'vm', 'wasi', 'worker_threads', 'zlib'];
