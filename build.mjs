@@ -39,9 +39,9 @@ try {
       ...nodeBuiltins,
       ...nodeBuiltins.map(name => `node:${name}`)
     ],
-    // 注入 banner：在輸出的 ESM 頂部引入 createRequire，建構一個合法的 require 函數
+    // 注入 banner：將 'module' 改為帶有 'node:' 前綴的 'node:module'
     banner: {
-      js: "import { createRequire } from 'module'; const require = createRequire(import.meta.url);",
+      js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);",
     },
     plugins: [ignoreNodeExtensionsPlugin],
     loader: {
