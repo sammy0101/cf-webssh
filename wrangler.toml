@@ -1,9 +1,22 @@
 name = "cf-webssh"
 main = "dist/index.js"
-# 升級相容性日期至 2026-01-01，以原生啟用 node:fs 與其他現代 Node.js 模組
 compatibility_date = "2026-01-01"
 compatibility_flags = [ "nodejs_compat" ]
 
 [[kv_namespaces]]
 binding = "WEBSSH_KV"
 id = "KV_NAMESPACE_ID_PLACEHOLDER"
+
+[vars]
+# ==========================================
+# 管理登入密碼（選填）
+# ==========================================
+# 若留空或註解此行，系統將不啟用登入頁面，任何人皆能讀取/連線您的伺服器。
+#
+# 建議生產環境保護：
+# 本地測試時可於此處直接填寫明文密碼，
+# 但發佈至生產環境時，強烈建議不要寫入此toml檔，
+# 而是直接在網頁控制台設定「Secret」或使用命令：
+# $ npx wrangler secret put ADMIN_PASSWORD
+# ==========================================
+# ADMIN_PASSWORD = "your_secure_password"
