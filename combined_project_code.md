@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Tue Jun 23 17:43:44 UTC 2026
+Generated on: Tue Jun 23 17:44:16 UTC 2026
 
 ## File: README.md
 ````md
@@ -590,8 +590,7 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
 
 ## File: mocks/cpu-features.js
 ````js
-// Mock cpu-features for worker build
-export default null;
+mocks/cpu-features.js
 
 ````
 
