@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Tue Jun 23 18:14:39 UTC 2026
+Generated on: Tue Jun 23 18:15:14 UTC 2026
 
 ## File: README.md
 ````md
@@ -459,9 +459,15 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
   <div id="app" class="container mx-auto p-6 max-w-6xl">
     <header class="mb-8 flex justify-between items-center border-b border-slate-800 pb-4">
       <h1 class="text-2xl font-bold tracking-wider text-emerald-400">⚡ CF-WebSSH</h1>
-      <button onclick="showAddModal()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded font-medium transition">
-        新增伺服器
-      </button>
+      <div class="flex space-x-3">
+        <!-- 登出按鈕，僅在啟用密碼驗證且登入成功時顯示 -->
+        <button id="logout-btn" onclick="handleLogout()" class="hidden bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded font-medium transition text-sm">
+          登出
+        </button>
+        <button onclick="showAddModal()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded font-medium transition text-sm">
+          新增伺服器
+        </button>
+      </div>
     </header>
 
     <!-- 伺服器列表 -->
@@ -473,6 +479,19 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
         目前沒有儲存的伺服器，點擊右上角新增連線。
       </div>
     </main>
+  </div>
+
+  <!-- 登入全螢幕遮罩 -->
+  <div id="login-overlay" class="fixed inset-0 bg-slate-950 flex hidden items-center justify-center p-4 z-50 animate-fade-in">
+    <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-sm shadow-2xl text-center">
+      <h1 class="text-2xl font-bold tracking-wider text-emerald-400 mb-2">⚡ CF-WebSSH</h1>
+      <p class="text-sm text-slate-400 mb-6">此工作台已受管理密碼保護，請輸入：</p>
+      <form id="login-form" onsubmit="handleLogin(event)">
+        <input type="password" id="login-password" required placeholder="請輸入密碼" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500 text-center mb-4">
+        <button type="submit" class="w-full py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-white font-medium transition">驗證並登入</button>
+        <p id="login-error" class="text-xs text-rose-500 mt-3 hidden"></p>
+      </form>
+    </div>
   </div>
 
   <!-- 新增/編輯 Modal -->
@@ -540,12 +559,84 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
     let term = null;
     let fitAddon = null;
 
-    // 初始化載入
-    document.addEventListener("DOMContentLoaded", fetchConnections);
+    // 啟動入口
+    document.addEventListener("DOMContentLoaded", checkAuth);
 
+    // 1. 檢查驗證狀態
+    async function checkAuth() {
+      try {
+        const res = await fetch('/api/auth-check');
+        const auth = await res.json();
+        
+        if (auth.required) {
+          if (auth.authenticated) {
+            document.getElementById('logout-btn').classList.remove('hidden');
+            fetchConnections();
+          } else {
+            showLoginOverlay();
+          }
+        } else {
+          // 沒有啟用密碼驗證
+          fetchConnections();
+        }
+      } catch (err) {
+        console.error("驗證檢查失敗:", err);
+      }
+    }
+
+    function showLoginOverlay() {
+      document.getElementById('login-overlay').classList.remove('hidden');
+      document.getElementById('login-password').focus();
+    }
+
+    // 2. 登入提交
+    async function handleLogin(event) {
+      event.preventDefault();
+      const password = document.getElementById('login-password').value;
+      const errorEl = document.getElementById('login-error');
+      errorEl.classList.add('hidden');
+
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          document.getElementById('login-overlay').classList.add('hidden');
+          document.getElementById('logout-btn').classList.remove('hidden');
+          fetchConnections();
+        } else {
+          errorEl.textContent = data.error || '登入失敗';
+          errorEl.classList.remove('hidden');
+        }
+      } catch (err) {
+        errorEl.textContent = '連線錯誤，請稍後重試';
+        errorEl.classList.remove('hidden');
+      }
+    }
+
+    // 3. 登出
+    async function handleLogout() {
+      try {
+        await fetch('/api/logout', { method: 'POST' });
+        document.getElementById('logout-btn').classList.add('hidden');
+        document.getElementById('login-password').value = '';
+        showLoginOverlay();
+      } catch (err) {
+        console.error("登出失敗:", err);
+      }
+    }
+
+    // 4. 取得伺服器列表
     async function fetchConnections() {
       try {
         const res = await fetch('/api/connections');
+        if (res.status === 401) {
+          showLoginOverlay();
+          return;
+        }
         const list = await res.json();
         const grid = document.getElementById('connections-grid');
         const empty = document.getElementById('empty-state');
@@ -598,7 +689,6 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
       document.getElementById('conn-auth-type').value = authType;
       
       document.getElementById('modal-title').textContent = '編輯連線設定';
-      // 提醒使用者如果不修改密碼/私鑰，可維持留白
       document.getElementById('conn-password').value = '';
       document.getElementById('conn-privatekey').value = '';
       document.getElementById('conn-password').placeholder = '留空表示不修改原設定';
@@ -640,21 +730,27 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
         const passwordVal = document.getElementById('conn-password').value;
         if (passwordVal || !id) {
           body.password = passwordVal;
-          body.privateKey = ''; // 若切換成密碼驗證，清空私鑰
+          body.privateKey = '';
         }
       } else {
         const privateKeyVal = document.getElementById('conn-privatekey').value;
         if (privateKeyVal || !id) {
           body.privateKey = privateKeyVal;
-          body.password = ''; // 若切換成私鑰驗證，清空密碼
+          body.password = '';
         }
       }
 
-      await fetch('/api/connections', {
+      const res = await fetch('/api/connections', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
+
+      if (res.status === 401) {
+        hideModal();
+        showLoginOverlay();
+        return;
+      }
 
       hideModal();
       fetchConnections();
@@ -662,46 +758,45 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
 
     async function deleteConnection(id) {
       if (confirm('確定要刪除此伺服器連線配置嗎？')) {
-        await fetch(`/api/connections/${id}`, { method: 'DELETE' });
+        const res = await fetch(`/api/connections/${id}`, { method: 'DELETE' });
+        if (res.status === 401) {
+          showLoginOverlay();
+          return;
+        }
         fetchConnections();
       }
     }
 
-    // 連線至 SSH
     function connectSSH(id, name) {
       document.getElementById('active-terminal-title').textContent = `連線至: ${name}`;
       document.getElementById('terminal-screen').classList.remove('hidden');
       document.getElementById('terminal-screen').classList.add('flex');
 
-      // 初始化 xterm.js
       term = new Terminal({
         cursorBlink: true,
         fontFamily: 'Courier New, Courier, monospace',
         fontSize: 14,
         theme: {
-          background: '#020617', // Slate-950
+          background: '#020617',
           foreground: '#f8fafc',
           cursor: '#10b981'
         }
       });
 
-      fitAddon = new window.FitAddon.FitAddon(); // 引入適應外層組件
+      fitAddon = new window.FitAddon.FitAddon();
       term.loadAddon(fitAddon);
       term.open(document.getElementById('terminal-container'));
       fitAddon.fit();
       
-      // 自動將焦點鎖定至終端機，免去滑鼠點擊
-      term.focus();
+      term.focus(); // 自動將焦點聚焦至終端機，免去手動點擊
 
-      // 建立 WebSocket 通訊
       const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
       const wsUrl = `${protocol}${window.location.host}/ssh/${id}`;
       ws = new WebSocket(wsUrl);
-      ws.binaryType = 'arraybuffer'; // 確保解析二進位數據正常
+      ws.binaryType = 'arraybuffer';
 
       ws.onopen = () => {
         term.write('\r\n[CF-WebSSH]: 已成功建立通訊隧道，正在連線遠端伺服器...\r\n');
-        // 發送初始視窗維度
         ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
       };
 
@@ -717,14 +812,12 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
         term.write('\r\n[CF-WebSSH]: 連線已中斷。\r\n');
       };
 
-      // 處理鍵盤輸入發送
       term.onData(data => {
         if (ws && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'data', data: data }));
         }
       });
 
-      // 監聽瀏覽器視窗大小調整
       window.addEventListener('resize', onWindowResize);
     }
 
