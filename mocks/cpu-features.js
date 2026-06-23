@@ -1,2 +1,1 @@
-// Mock cpu-features for worker build
-export default null;
+mocks/cpu-features.js
