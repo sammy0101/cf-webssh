@@ -1,0 +1,16 @@
+{
+  "name": "cf-webssh",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "dependencies": {
+    "ssh2": "^1.15.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.20.0",
+    "wrangler": "^3.50.0"
+  }
+}
