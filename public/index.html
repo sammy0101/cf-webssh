@@ -126,17 +126,9 @@
         <span id="active-terminal-title" class="font-mono text-slate-300">連線中...</span>
         
         <span class="text-slate-700 hidden md:inline">|</span>
-        <!-- 手動 SFTP 檔案選擇上傳按鈕 -->
-        <button onclick="triggerFileInput()" class="text-xs bg-slate-800 hover:bg-slate-700 hover:text-emerald-300 text-emerald-400 border border-slate-700 px-2.5 py-1 rounded font-medium transition flex items-center gap-1.5">
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
-          </svg>
-          SFTP 上傳檔案
-        </button>
-
-        <!-- 檔案瀏覽器側邊欄切換按鈕 (新增) -->
+        <!-- 檔案瀏覽器側邊欄切換主按鈕 -->
         <button onclick="toggleSftpSidebar()" class="text-xs bg-slate-800 hover:bg-slate-700 hover:text-emerald-300 text-emerald-400 border border-slate-700 px-2.5 py-1 rounded font-medium transition flex items-center gap-1.5">
-          📁 瀏覽 VPS 檔案
+          📁 SFTP 檔案管理
         </button>
         <span class="text-xs text-slate-500 hidden lg:inline">（亦支援滑鼠直接拖曳本機檔案至終端機內放開上傳）</span>
         
@@ -158,13 +150,13 @@
              <svg class="w-16 h-16 text-emerald-400 mx-auto mb-4 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
              </svg>
-             <p class="text-xl font-bold text-emerald-300">拖放到此處上傳至家目錄</p>
-             <p class="text-xs text-slate-400 mt-2">（檔案將上傳至遠端伺服器您的家目錄下）</p>
+             <p class="text-xl font-bold text-emerald-300">拖放到此處上傳至當前資料夾</p>
+             <p class="text-xs text-slate-400 mt-2">（將自動上傳至檔案管理器目前瀏覽的目錄中）</p>
            </div>
          </div>
       </div>
 
-      <!-- 右側 SFTP 檔案瀏覽器側邊欄容器 (新增) -->
+      <!-- 右側 SFTP 檔案管理器側邊欄容器 -->
       <div id="sftp-sidebar" class="w-80 bg-slate-900 border-l border-slate-800 flex flex-col hidden transition-all duration-300">
         <!-- 側邊欄標題 -->
         <div class="p-3 border-b border-slate-800 flex justify-between items-center bg-slate-950">
@@ -176,16 +168,28 @@
           </button>
         </div>
         
-        <!-- 路徑控制導航列 -->
-        <div class="p-2 border-b border-slate-800 bg-slate-900/50 flex items-center gap-1.5 text-xs">
-          <button onclick="sftpGoUp()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded font-medium" title="返回上層目錄">
-            向上 ↩
+        <!-- 操作控制與上傳按鈕 -->
+        <div class="p-2 border-b border-slate-800 bg-slate-900/50 flex items-center gap-1.5 justify-between">
+          <div class="flex items-center gap-1.5">
+            <button onclick="sftpGoUp()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded text-xs font-medium" title="返回上層目錄">
+              向上 ↩
+            </button>
+            <button onclick="refreshSftpList()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded text-xs font-medium" title="重新整理列表">
+              整理 ↻
+            </button>
+          </div>
+          <!-- 收納整合後的手動上傳按鈕 -->
+          <button onclick="triggerFileInput()" class="text-xs bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1 rounded font-medium transition flex items-center gap-1">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+            </svg>
+            上傳檔案
           </button>
-          <button onclick="refreshSftpList()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded font-medium" title="重新整理列表">
-            整理 ↻
-          </button>
-          <!-- 顯示目前絕對路徑 -->
-          <input type="text" id="sftp-current-path" readonly class="flex-1 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-slate-300 text-[11px] font-mono select-all">
+        </div>
+
+        <!-- 目前目錄路徑顯示欄 -->
+        <div class="p-2 border-b border-slate-800 bg-slate-950 flex items-center gap-1">
+          <input type="text" id="sftp-current-path" readonly class="w-full bg-transparent border-none text-slate-300 text-[11px] font-mono select-all focus:outline-none">
         </div>
 
         <!-- 檔案與資料夾清單區 -->
@@ -196,20 +200,20 @@
     </div>
   </div>
 
-  <!-- 上傳進度顯示遮罩 -->
+  <!-- 上傳與下載進度顯示遮罩 -->
   <div id="upload-overlay" class="fixed inset-0 bg-black/70 hidden items-center justify-center p-4 z-50">
     <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-sm shadow-2xl text-center">
-      <h3 class="text-lg font-bold text-emerald-400 mb-2">檔案上傳中 (SFTP)</h3>
+      <h3 class="text-lg font-bold text-emerald-400 mb-2">傳輸處理中 (SFTP)</h3>
       <p id="upload-file-info" class="text-sm text-slate-300 font-mono truncate mb-4">filename.txt</p>
       <div class="w-full bg-slate-800 rounded-full h-4 overflow-hidden mb-3">
         <div id="upload-progress-bar" class="bg-emerald-500 h-full w-0 transition-all duration-150"></div>
       </div>
       <div class="flex justify-between text-xs text-slate-400 font-mono">
-        <span id="upload-progress-percent">0%</span>
+        <span id="upload-progress-percent">處理中...</span>
         <span id="upload-progress-size">0.00 / 0.00 MB</span>
       </div>
       <div class="mt-6 flex justify-center">
-        <button onclick="cancelUpload()" class="px-4 py-1.5 bg-rose-700 hover:bg-rose-600 rounded text-sm text-white font-medium transition">取消上傳</button>
+        <button onclick="cancelUpload()" class="px-4 py-1.5 bg-rose-700 hover:bg-rose-600 rounded text-sm text-white font-medium transition">取消</button>
       </div>
     </div>
   </div>
@@ -218,11 +222,16 @@
     let ws = null;
     let term = null;
     let fitAddon = null;
-    let currentSftpWs = null;       // 當前 SFTP WebSocket 物件
-    let sftpUploadCancelled = false; // 是否取消上傳標記
+    let sftpWs = null;               // 單一、永久活耀的 SFTP WebSocket 通道 (核心優化)
+    let sftpUploadCancelled = false; // 是否取消傳輸標記
     let activeConnectionId = null;   // 當前終端連線伺服器 ID
-    let sftpCurrentPath = '.';       // 當前檔案管理器路徑 (新增)
-    let sftpSidebarOpen = false;     // 檔案管理器側邊欄開關狀態 (新增)
+    let sftpCurrentPath = '.';       // 當前檔案管理器絕對路徑
+    let sftpSidebarOpen = false;     // 檔案管理器側邊欄狀態
+    let sftpFileChunks = [];         // 用於下載儲存二進位區塊
+    let currentDownloadingFilename = ''; // 當前正在下載的檔名
+    let uploadFile = null;           // 當前正在上傳的 File 物件
+    let uploadOffset = 0;            // 上傳目前偏移行數
+    const uploadChunkSize = 64 * 1024; // 上傳分塊大小
 
     // 啟動入口
     document.addEventListener("DOMContentLoaded", checkAuth);
@@ -437,7 +446,6 @@
       const screen = document.getElementById('terminal-screen');
       const dropzone = document.getElementById('dropzone-overlay');
 
-      // 阻止瀏覽器預設的開啟檔案行為
       ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
         screen.addEventListener(eventName, preventDefaults, false);
       });
@@ -447,7 +455,6 @@
         e.stopPropagation();
       }
 
-      // 顯示上傳提示遮罩
       screen.addEventListener('dragenter', () => {
         dropzone.classList.remove('hidden');
         dropzone.classList.add('flex');
@@ -458,7 +465,6 @@
         dropzone.classList.add('flex');
       }, false);
 
-      // 當滑鼠移出視窗，隱藏提示遮罩
       screen.addEventListener('dragleave', (e) => {
         if (e.relatedTarget === null || !screen.contains(e.relatedTarget)) {
           dropzone.classList.add('hidden');
@@ -466,7 +472,6 @@
         }
       }, false);
 
-      // 放開滑鼠時執行上傳
       screen.addEventListener('drop', (e) => {
         dropzone.classList.add('hidden');
         dropzone.classList.remove('flex');
@@ -475,7 +480,16 @@
         const files = dt.files;
 
         if (files && files.length > 0) {
-          handleSftpUpload(connectionId, files[0]);
+          // 判斷 SFTP 通道是否就緒，若未就緒自動打開面板建立通道並上傳
+          if (!sftpWs || sftpWs.readyState !== WebSocket.OPEN) {
+            toggleSftpSidebar();
+            // 等待一小段時間確保連線建立
+            setTimeout(() => {
+              handleSftpUpload(connectionId, files[0]);
+            }, 800);
+          } else {
+            handleSftpUpload(connectionId, files[0]);
+          }
         }
       }, false);
     }
@@ -494,116 +508,136 @@
       }
     }
 
-    // 6. 執行 SFTP 上傳
-    function handleSftpUpload(connectionId, file) {
-      sftpUploadCancelled = false;
-
-      const uploadOverlay = document.getElementById('upload-overlay');
-      const fileInfo = document.getElementById('upload-file-info');
-      const progressBar = document.getElementById('upload-progress-bar');
-      const progressPercent = document.getElementById('upload-progress-percent');
-      const progressSize = document.getElementById('upload-progress-size');
-
-      fileInfo.textContent = `${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
-      progressBar.style.width = '0%';
-      progressPercent.textContent = '0%';
-      progressSize.textContent = `0.00 / ${(file.size / 1024 / 1024).toFixed(2)} MB`;
-
-      uploadOverlay.classList.remove('hidden');
-      uploadOverlay.classList.add('flex');
+    // 6. 建立單一 SFTP WebSocket 安全連線 (核心優化)
+    function connectSftpWebSocket() {
+      if (!activeConnectionId) return;
+      const fileListContainer = document.getElementById('sftp-file-list');
+      fileListContainer.innerHTML = '<div class="text-slate-500 text-center py-8">建立安全 SFTP 通道中...</div>';
 
       const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-      const wsUrl = `${protocol}${window.location.host}/sftp/${connectionId}`;
-      currentSftpWs = new WebSocket(wsUrl);
-      currentSftpWs.binaryType = 'arraybuffer';
+      const wsUrl = `${protocol}${window.location.host}/sftp/${activeConnectionId}`;
+      sftpWs = new WebSocket(wsUrl);
+      sftpWs.binaryType = 'arraybuffer';
 
-      const chunkSize = 64 * 1024;
-      let offset = 0;
-
-      currentSftpWs.onopen = () => {
-        currentSftpWs.send(JSON.stringify({ action: 'upload', filename: file.name, size: file.size }));
+      sftpWs.onopen = () => {
+        // 安全連線就緒，載入預設的相對路徑目錄
+        sftpCurrentPath = '.';
+        sftpWs.send(JSON.stringify({ action: 'list', path: sftpCurrentPath }));
       };
 
-      currentSftpWs.onmessage = async (event) => {
+      sftpWs.onmessage = async (event) => {
+        // I. 處理檔案下載的二進位區塊 (Chunk)
+        if (event.data instanceof ArrayBuffer) {
+          sftpFileChunks.push(event.data);
+          
+          // 前端回覆 ACK 確認以請求下一區塊（流量控制，防止 Worker 和前端記憶體溢位）
+          sftpWs.send(JSON.stringify({ action: 'download_next' }));
+          
+          const downloadedBytes = sftpFileChunks.reduce((acc, chunk) => acc + chunk.byteLength, 0);
+          document.getElementById('upload-progress-percent').textContent = '下載中...';
+          document.getElementById('upload-progress-size').textContent = `${(downloadedBytes / 1024 / 1024).toFixed(2)} MB`;
+          return;
+        }
+
+        // II. 處理 JSON 控制回饋指令
         try {
           const msg = JSON.parse(event.data);
-          
-          if (msg.error) {
-            alert(`SFTP 傳輸失敗: ${msg.error}`);
+
+          if (msg.status === 'error') {
+            alert(`SFTP 操作失敗: ${msg.message}`);
             closeUploadOverlay();
+            refreshSftpList();
             return;
           }
 
-          if (msg.status === 'ready') {
-            // SSH 登入完成
-          } else if (msg.status === 'start_ok' || msg.status === 'ack') {
-            if (sftpUploadCancelled) {
-              currentSftpWs.close();
-              return;
-            }
-
-            if (msg.status === 'ack') {
-              offset += msg.written;
-              const percent = Math.min(100, Math.floor((offset / file.size) * 100));
-              progressBar.style.width = `${percent}%`;
-              progressPercent.textContent = `${percent}%`;
-              progressSize.textContent = `${(offset / 1024 / 1024).toFixed(2)} / ${(file.size / 1024 / 1024).toFixed(2)} MB`;
-            }
-
-            if (offset < file.size) {
-              const nextSize = Math.min(chunkSize, file.size - offset);
-              const slice = file.slice(offset, offset + nextSize);
-              
-              const reader = new FileReader();
-              reader.onload = (e) => {
-                if (currentSftpWs && currentSftpWs.readyState === WebSocket.OPEN) {
-                  currentSftpWs.send(e.target.result);
-                }
-              };
-              reader.readAsArrayBuffer(slice);
-            } else {
-              currentSftpWs.send(JSON.stringify({ action: 'end' }));
-            }
-          } else if (msg.status === 'success') {
-            term.write(`\r\n[CF-WebSSH]: 檔案 "${file.name}" 上傳成功！已儲存至家目錄。\r\n`);
-            closeUploadOverlay();
-            
-            // 若檔案管理器側邊欄正開啟，自動重新整理檔案清單
-            if (sftpSidebarOpen) {
-              refreshSftpList();
-            }
+          // A. 檔案清單渲染
+          if (msg.status === 'list') {
+            sftpCurrentPath = msg.path;
+            document.getElementById('sftp-current-path').value = sftpCurrentPath;
+            renderSftpFiles(msg.files);
           }
+
+          // B. 刪除完成
+          else if (msg.status === 'delete_ok') {
+            refreshSftpList();
+          }
+
+          // C. 後端已開啟寫入流，通知前端可以開始發送檔案二進位分塊
+          else if (msg.status === 'upload_ready') {
+            sendNextUploadChunk();
+          }
+
+          // D. 上傳分塊寫入成功之 ACK 信號
+          else if (msg.status === 'upload_ack') {
+            handleUploadAck(msg.written);
+          }
+
+          // E. 上傳結束成功
+          else if (msg.status === 'upload_ok') {
+            term.write(`\r\n[CF-WebSSH]: 檔案上傳成功！已儲存至 ${sftpCurrentPath} 檔案路徑。\r\n`);
+            closeUploadOverlay();
+            refreshSftpList();
+          }
+
+          // F. 開始下載之 Metadata
+          else if (msg.status === 'download_meta') {
+            sftpFileChunks = [];
+            currentDownloadingFilename = msg.filename;
+
+            const uploadOverlay = document.getElementById('upload-overlay');
+            const fileInfo = document.getElementById('upload-file-info');
+            const progressBar = document.getElementById('upload-progress-bar');
+            
+            fileInfo.textContent = `下載: ${currentDownloadingFilename}`;
+            progressBar.style.width = '100%';
+            document.getElementById('upload-progress-percent').textContent = '開始下載...';
+            document.getElementById('upload-progress-size').textContent = '0.00 MB';
+
+            uploadOverlay.classList.remove('hidden');
+            uploadOverlay.classList.add('flex');
+
+            // 發送確認，開始提取第一個區塊
+            sftpWs.send(JSON.stringify({ action: 'download_next' }));
+          }
+
+          // G. 下載結束
+          else if (msg.status === 'download_end') {
+            const blob = new Blob(sftpFileChunks, { type: 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = currentDownloadingFilename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            closeUploadOverlay();
+          }
+
         } catch (e) {
-          console.error("SFTP 訊息流解析錯誤:", e);
+          console.error("SFTP 接收命令解析失敗:", e);
         }
       };
 
-      currentSftpWs.onerror = (err) => {
-        alert('SFTP 網路錯誤，請確認遠端伺服器與權限配置。');
-        closeUploadOverlay();
+      sftpWs.onerror = () => {
+        fileListContainer.innerHTML = '<div class="text-rose-400 p-4 text-center">SFTP 通道建立失敗</div>';
       };
 
-      currentSftpWs.onclose = () => {
-        closeUploadOverlay();
+      sftpWs.onclose = () => {
+        fileListContainer.innerHTML = '<div class="text-slate-500 p-4 text-center">SFTP 通道已關閉</div>';
       };
     }
 
-    function cancelUpload() {
-      sftpUploadCancelled = true;
-      if (currentSftpWs) {
-        currentSftpWs.close();
+    function disconnectSftpWebSocket() {
+      if (sftpWs) {
+        sftpWs.close();
+        sftpWs = null;
       }
-      closeUploadOverlay();
-      term.write(`\r\n[CF-WebSSH]: 使用者取消了檔案上傳工作。\r\n`);
     }
 
-    function closeUploadOverlay() {
-      document.getElementById('upload-overlay').classList.add('hidden');
-      document.getElementById('upload-overlay').classList.remove('flex');
-      currentSftpWs = null;
-    }
-
-    // 6.1 開關檔案管理器側邊欄 (新增)
+    // 6.1 開關檔案管理器側邊欄 (優化 resize 體驗)
     function toggleSftpSidebar() {
       const sidebar = document.getElementById('sftp-sidebar');
       sftpSidebarOpen = !sftpSidebarOpen;
@@ -611,11 +645,11 @@
       if (sftpSidebarOpen) {
         sidebar.classList.remove('hidden');
         sidebar.classList.add('flex');
-        sftpCurrentPath = '.'; // 重設路徑至登入家目錄
-        refreshSftpList();
+        connectSftpWebSocket();
       } else {
         sidebar.classList.add('hidden');
         sidebar.classList.remove('flex');
+        disconnectSftpWebSocket();
       }
       
       // 給予側邊欄過渡一些時間，隨後重新調適終端機大小
@@ -629,94 +663,75 @@
       }, 100);
     }
 
-    // 6.2 重新整理/載入 SFTP 檔案清單 (新增)
-    async function refreshSftpList() {
-      if (!activeConnectionId) return;
-      const fileListContainer = document.getElementById('sftp-file-list');
-      fileListContainer.innerHTML = '<div class="text-slate-500 text-center py-8">正在載入遠端檔案...</div>';
-
-      try {
-        const res = await fetch(`/api/sftp/list?id=${activeConnectionId}&path=${encodeURIComponent(sftpCurrentPath)}`);
-        
-        if (res.status === 401) {
-          toggleSftpSidebar();
-          showLoginOverlay();
-          return;
-        }
-
-        const data = await res.json();
-        if (data.error) {
-          fileListContainer.innerHTML = `<div class="text-rose-400 p-2 break-all text-center">讀取失敗:<br>${data.error}</div>`;
-          return;
-        }
-
-        sftpCurrentPath = data.path;
-        document.getElementById('sftp-current-path').value = sftpCurrentPath;
-        fileListContainer.innerHTML = '';
-
-        if (data.files.length === 0) {
-          fileListContainer.innerHTML = '<div class="text-slate-500 text-center py-8">（此目錄為空）</div>';
-          return;
-        }
-
-        data.files.forEach(file => {
-          // 排除當前資料夾與上層資料夾符號 . 及 ..
-          if (file.name === '.' || file.name === '..') return;
-
-          const item = document.createElement('div');
-          item.className = "flex items-center justify-between p-1.5 rounded hover:bg-slate-800 group transition duration-150";
-          
-          const icon = file.isDir ? '📁' : '📄';
-          const sizeStr = file.isDir ? '' : ` (${(file.size / 1024).toFixed(1)} KB)`;
-          
-          // 左側資訊 (如果是資料夾則具備雙擊或單擊導航功能)
-          const info = document.createElement('div');
-          info.className = `flex items-center gap-1.5 truncate flex-1 ${file.isDir ? 'text-amber-400 font-bold cursor-pointer hover:underline' : 'text-slate-300'}`;
-          info.innerHTML = `<span>${icon}</span><span class="truncate" title="${file.name}">${file.name}${sizeStr}</span>`;
-          
-          if (file.isDir) {
-            info.onclick = () => {
-              sftpCurrentPath = sftpCurrentPath === '/' ? `/${file.name}` : `${sftpCurrentPath}/${file.name}`;
-              refreshSftpList();
-            };
-          }
-
-          // 右側操作面板
-          const actions = document.createElement('div');
-          actions.className = "flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition duration-150 pl-2";
-          
-          if (!file.isDir) {
-            // 下載按鈕
-            const dlBtn = document.createElement('button');
-            dlBtn.className = "text-emerald-400 hover:text-emerald-300 bg-slate-950 px-1 py-0.5 rounded text-[10px] font-medium";
-            dlBtn.textContent = '下載';
-            dlBtn.onclick = (e) => {
-              e.stopPropagation();
-              sftpDownloadFile(file.name);
-            };
-            actions.appendChild(dlBtn);
-          }
-
-          // 刪除按鈕
-          const delBtn = document.createElement('button');
-          delBtn.className = "text-rose-400 hover:text-rose-300 bg-slate-950 px-1 py-0.5 rounded text-[10px] font-medium";
-          delBtn.textContent = '刪除';
-          delBtn.onclick = (e) => {
-            e.stopPropagation();
-            sftpDeleteFile(file.name, file.isDir);
-          };
-          actions.appendChild(delBtn);
-
-          item.appendChild(info);
-          item.appendChild(actions);
-          fileListContainer.appendChild(item);
-        });
-      } catch (err) {
-        fileListContainer.innerHTML = `<div class="text-rose-400 p-2 text-center">連線出錯:<br>${err.message}</div>`;
+    // 6.2 重新整理 SFTP 檔案清單
+    function refreshSftpList() {
+      if (sftpWs && sftpWs.readyState === WebSocket.OPEN) {
+        sftpWs.send(JSON.stringify({ action: 'list', path: sftpCurrentPath }));
       }
     }
 
-    // 6.3 回到上層目錄 (新增)
+    // 6.3 渲染遠端目錄檔案至 UI
+    function renderSftpFiles(files) {
+      const fileListContainer = document.getElementById('sftp-file-list');
+      fileListContainer.innerHTML = '';
+
+      if (files.length === 0) {
+        fileListContainer.innerHTML = '<div class="text-slate-500 text-center py-8">（此目錄為空）</div>';
+        return;
+      }
+
+      files.forEach(file => {
+        if (file.name === '.' || file.name === '..') return;
+
+        const item = document.createElement('div');
+        item.className = "flex items-center justify-between p-1.5 rounded hover:bg-slate-800 group transition duration-150";
+        
+        const icon = file.isDir ? '📁' : '📄';
+        const sizeStr = file.isDir ? '' : ` (${(file.size / 1024).toFixed(1)} KB)`;
+        
+        const info = document.createElement('div');
+        info.className = `flex items-center gap-1.5 truncate flex-1 ${file.isDir ? 'text-amber-400 font-bold cursor-pointer hover:underline' : 'text-slate-300'}`;
+        info.innerHTML = `<span>${icon}</span><span class="truncate" title="${file.name}">${file.name}${sizeStr}</span>`;
+        
+        if (file.isDir) {
+          info.onclick = () => {
+            sftpCurrentPath = sftpCurrentPath === '/' ? `/${file.name}` : `${sftpCurrentPath}/${file.name}`;
+            refreshSftpList();
+          };
+        }
+
+        const actions = document.createElement('div');
+        actions.className = "flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition duration-150 pl-2";
+        
+        if (!file.isDir) {
+          // 下載按鈕
+          const dlBtn = document.createElement('button');
+          dlBtn.className = "text-emerald-400 hover:text-emerald-300 bg-slate-950 px-1 py-0.5 rounded text-[10px] font-medium";
+          dlBtn.textContent = '下載';
+          dlBtn.onclick = (e) => {
+            e.stopPropagation();
+            sftpDownloadFile(file.name);
+          };
+          actions.appendChild(dlBtn);
+        }
+
+        // 刪除按鈕
+        const delBtn = document.createElement('button');
+        delBtn.className = "text-rose-400 hover:text-rose-300 bg-slate-950 px-1 py-0.5 rounded text-[10px] font-medium";
+        delBtn.textContent = '刪除';
+        delBtn.onclick = (e) => {
+          e.stopPropagation();
+          sftpDeleteFile(file.name, file.isDir);
+        };
+        actions.appendChild(delBtn);
+
+        item.appendChild(info);
+        item.appendChild(actions);
+        fileListContainer.appendChild(item);
+      });
+    }
+
+    // 6.4 向上導航
     function sftpGoUp() {
       if (sftpCurrentPath === '/' || sftpCurrentPath === '.') return;
       const parts = sftpCurrentPath.split('/');
@@ -725,48 +740,103 @@
       refreshSftpList();
     }
 
-    // 6.4 串流下載檔案 (新增)
+    // 6.5 下載遠端檔案
     function sftpDownloadFile(filename) {
+      if (!sftpWs || sftpWs.readyState !== WebSocket.OPEN) return;
       const targetPath = sftpCurrentPath === '/' ? `/${filename}` : `${sftpCurrentPath}/${filename}`;
-      const url = `/api/sftp/download?id=${activeConnectionId}&path=${encodeURIComponent(targetPath)}`;
-      
-      // 建立臨時隱藏下載錨點進行點擊觸發，免佔瀏覽器 RAM
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      // 向單一 WebSocket 發送下載檔案指令
+      sftpWs.send(JSON.stringify({ action: 'download_start', path: targetPath }));
     }
 
-    // 6.5 刪除檔案/資料夾 (新增)
-    async function sftpDeleteFile(filename, isDir) {
+    // 6.6 刪除遠端對象
+    function sftpDeleteFile(filename, isDir) {
+      if (!sftpWs || sftpWs.readyState !== WebSocket.OPEN) return;
       const typeStr = isDir ? '資料夾' : '檔案';
       if (!confirm(`確定要永久刪除此${typeStr}嗎？ (${filename})`)) return;
 
       const targetPath = sftpCurrentPath === '/' ? `/${filename}` : `${sftpCurrentPath}/${filename}`;
-      
-      try {
-        const res = await fetch('/api/sftp/delete', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: activeConnectionId, path: targetPath, isDir })
-        });
-        
-        if (res.status === 401) {
-          showLoginOverlay();
-          return;
-        }
+      sftpWs.send(JSON.stringify({ action: 'delete', path: targetPath, isDir }));
+    }
 
-        const data = await res.json();
-        if (data.error) {
-          alert(`刪除失敗: ${data.error}`);
-        } else {
-          refreshSftpList();
-        }
-      } catch (err) {
-        alert(`遠端連線錯誤: ${err.message}`);
+    // 6.7 執行 SFTP 上傳
+    function handleSftpUpload(connectionId, file) {
+      if (!sftpWs || sftpWs.readyState !== WebSocket.OPEN) {
+        alert('SFTP 安全通道尚未就緒，請重試。');
+        return;
       }
+      sftpUploadCancelled = false;
+      uploadFile = file;
+      uploadOffset = 0;
+
+      const uploadOverlay = document.getElementById('upload-overlay');
+      const fileInfo = document.getElementById('upload-file-info');
+      const progressBar = document.getElementById('upload-progress-bar');
+      const progressPercent = document.getElementById('upload-progress-percent');
+      const progressSize = document.getElementById('upload-progress-size');
+
+      fileInfo.textContent = `上傳: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
+      progressBar.style.width = '0%';
+      progressPercent.textContent = '0%';
+      progressSize.textContent = `0.00 / ${(file.size / 1024 / 1024).toFixed(2)} MB`;
+
+      uploadOverlay.classList.remove('hidden');
+      uploadOverlay.classList.add('flex');
+
+      // 告訴遠端準備上傳
+      const targetPath = sftpCurrentPath === '/' ? `/${file.name}` : `${sftpCurrentPath}/${file.name}`;
+      sftpWs.send(JSON.stringify({ action: 'upload_start', filename: file.name, path: targetPath }));
+    }
+
+    // 6.8 發送上傳分塊封包
+    function sendNextUploadChunk() {
+      const nextSize = Math.min(uploadChunkSize, uploadFile.size - uploadOffset);
+      const slice = uploadFile.slice(uploadOffset, uploadOffset + nextSize);
+      
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        if (sftpWs && sftpWs.readyState === WebSocket.OPEN) {
+          sftpWs.send(e.target.result); // 發送二進位分塊
+        }
+      };
+      reader.readAsArrayBuffer(slice);
+    }
+
+    // 6.9 處理分塊 ACK 響應
+    function handleUploadAck(written) {
+      if (sftpUploadCancelled) return;
+      uploadOffset += written;
+
+      const progressBar = document.getElementById('upload-progress-bar');
+      const progressPercent = document.getElementById('upload-progress-percent');
+      const progressSize = document.getElementById('upload-progress-size');
+
+      const percent = Math.min(100, Math.floor((uploadOffset / uploadFile.size) * 100));
+      progressBar.style.width = `${percent}%`;
+      progressPercent.textContent = `${percent}%`;
+      progressSize.textContent = `${(uploadOffset / 1024 / 1024).toFixed(2)} / ${(uploadFile.size / 1024 / 1024).toFixed(2)} MB`;
+
+      if (uploadOffset < uploadFile.size) {
+        sendNextUploadChunk();
+      } else {
+        // 完成上傳
+        sftpWs.send(JSON.stringify({ action: 'upload_end' }));
+      }
+    }
+
+    function cancelUpload() {
+      sftpUploadCancelled = true;
+      if (sftpWs && sftpWs.readyState === WebSocket.OPEN) {
+        sftpWs.send(JSON.stringify({ action: 'upload_cancel' }));
+      }
+      closeUploadOverlay();
+      term.write(`\r\n[CF-WebSSH]: 使用者手動取消了傳輸工作。\r\n`);
+      refreshSftpList();
+    }
+
+    function closeUploadOverlay() {
+      document.getElementById('upload-overlay').classList.add('hidden');
+      document.getElementById('upload-overlay').classList.remove('flex');
+      uploadFile = null;
     }
 
     // 7. 連線至 SSH 終端機
@@ -843,7 +913,7 @@
     }
 
     function closeTerminal() {
-      // 關閉終端機時，同步隱藏檔案管理器側邊欄
+      // 關閉終端機時，同步隱藏檔案管理器並中斷連線
       if (sftpSidebarOpen) {
         toggleSftpSidebar();
       }
