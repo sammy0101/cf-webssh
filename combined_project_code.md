@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Tue Jun 23 17:07:24 UTC 2026
+Generated on: Tue Jun 23 17:19:38 UTC 2026
 
 ## File: README.md
 ````md
@@ -776,61 +776,51 @@ const require = (name) => {
   }
 
   if (typeof res === 'function') {
-    if (typeof res.hasOwnProperty !== 'function') {
-      res.hasOwnProperty = Object.prototype.hasOwnProperty.bind(res);
-    }
     return res;
   }
 
   if (res && typeof res === 'object') {
-    const needsUnwrap = (res[Symbol.toStringTag] === 'Module')
-      || (typeof res.hasOwnProperty !== 'function');
+    const hasProto = (Object.getPrototypeOf(res) !== null);
 
-    if (needsUnwrap) {
-      const ns = res;
-      const baseName = name.replace(/^node:/, '');
-      let ctor = null;
+    if (hasProto) {
+      return res;
+    }
 
-      if (typeof ns.default === 'function') {
-        ctor = ns.default;
-      } else if (typeof ns[baseName] === 'function') {
-        ctor = ns[baseName];
-      } else {
-        const pascal = baseName.charAt(0).toUpperCase() + baseName.slice(1);
-        if (typeof ns[pascal] === 'function') ctor = ns[pascal];
-      }
+    const ns = res;
+    const baseName = name.replace(/^node:/, '');
+    let ctor = null;
 
-      if (ctor) {
-        for (const key of Object.getOwnPropertyNames(ns)) {
-          if (key !== 'default' && key !== '__esModule' && !(key in ctor)) {
-            try { ctor[key] = ns[key]; } catch(e) {}
-          }
-        }
-        if (typeof ctor.hasOwnProperty !== 'function') {
-          ctor.hasOwnProperty = Object.prototype.hasOwnProperty.bind(ctor);
-        }
-        return ctor;
-      }
+    if (typeof ns.default === 'function') {
+      ctor = ns.default;
+    } else if (typeof ns[baseName] === 'function') {
+      ctor = ns[baseName];
+    } else {
+      const pascal = baseName.charAt(0).toUpperCase() + baseName.slice(1);
+      if (typeof ns[pascal] === 'function') ctor = ns[pascal];
+    }
 
-      const wrapper = function() {};
-      if (ctor === null) {
-        wrapper.prototype = Object.create(Object.prototype);
-      }
+    if (ctor) {
       for (const key of Object.getOwnPropertyNames(ns)) {
-        if (key !== '__esModule' && key !== 'constructor') {
-          try { wrapper[key] = ns[key]; } catch(e) {}
+        if (key !== 'default' && key !== '__esModule' && !(key in ctor)) {
+          try { ctor[key] = ns[key]; } catch(e) {}
         }
       }
-      if (typeof wrapper.hasOwnProperty !== 'function') {
-        wrapper.hasOwnProperty = Object.prototype.hasOwnProperty.bind(wrapper);
+      if (typeof ctor.hasOwnProperty !== 'function') {
+        ctor.hasOwnProperty = Object.prototype.hasOwnProperty.bind(ctor);
       }
-      return wrapper;
+      return ctor;
     }
 
-    if (typeof res.hasOwnProperty !== 'function') {
-      res.hasOwnProperty = Object.prototype.hasOwnProperty.bind(res);
+    const wrapper = function() {};
+    for (const key of Object.getOwnPropertyNames(ns)) {
+      if (key !== '__esModule' && key !== 'constructor') {
+        try { wrapper[key] = ns[key]; } catch(e) {}
+      }
     }
-    return res;
+    if (typeof wrapper.hasOwnProperty !== 'function') {
+      wrapper.hasOwnProperty = Object.prototype.hasOwnProperty.bind(wrapper);
+    }
+    return wrapper;
   }
 
   return res;
