@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Tue Jun 23 18:27:47 UTC 2026
+Generated on: Tue Jun 23 18:39:24 UTC 2026
 
 ## File: README.md
 ````md
@@ -134,7 +134,7 @@ export default {
       return token === expected;
     };
 
-    // 安全防禦門禁：若啟用密碼驗證且未授權，阻擋所有非公開路徑
+    // 安全防禦門禁：若啟用密碼驗證且未授權，阻擋所有非公開路徑（包含 SSH 與 SFTP WebSocket）
     const publicPaths = ['/', '/index.html', '/api/login', '/api/auth-check', '/api/logout'];
     if (!publicPaths.includes(url.pathname)) {
       if (!(await isAuthorized())) {
@@ -286,7 +286,7 @@ export default {
       }
     }
 
-    // 5. WebSocket 協議轉換為 TCP SSH 橋接
+    // 5. WebSocket 協議轉換為 TCP SSH 終端橋接
     if (url.pathname.startsWith('/ssh/') && request.headers.get('Upgrade') === 'websocket') {
       const id = url.pathname.split('/').pop();
       const connectionVal = await env.WEBSSH_KV.get(`connection:${id}`);
@@ -422,6 +422,146 @@ export default {
         sshClient.connect(connectOptions);
       } catch (err) {
         server.send(`\r\n[SSH 初始化錯誤]: ${err.message}\r\n`);
+        server.close(1011);
+      }
+
+      return new Response(null, {
+        status: 101,
+        webSocket: client,
+      });
+    }
+
+    // 6. WebSocket 協議轉換為 TCP SFTP 檔案傳輸橋接 (新增)
+    if (url.pathname.startsWith('/sftp/') && request.headers.get('Upgrade') === 'websocket') {
+      const id = url.pathname.split('/').pop();
+      const connectionVal = await env.WEBSSH_KV.get(`connection:${id}`);
+      if (!connectionVal) {
+        return new Response('連線配置不存在', { status: 404 });
+      }
+
+      const config = JSON.parse(connectionVal);
+      const [client, server] = new WebSocketPair();
+
+      server.accept();
+
+      const sshClient = new Client();
+      let sftpClient = null;
+      let sftpStream = null;
+
+      sshClient.on('ready', () => {
+        sshClient.sftp((err, sftp) => {
+          if (err) {
+            server.send(JSON.stringify({ error: `SFTP 初始化失敗: ${err.message}` }));
+            server.close(1011);
+            sshClient.end();
+            return;
+          }
+          sftpClient = sftp;
+          // 通知前端 SFTP 連線就緒
+          server.send(JSON.stringify({ status: 'ready' }));
+        });
+      });
+
+      sshClient.on('error', (err) => {
+        server.send(JSON.stringify({ error: `SSH 連線錯誤: ${err.message}` }));
+        server.close(1011);
+      });
+
+      // 監聽傳輸封包
+      server.addEventListener('message', async (event) => {
+        // 如果接收到的是二進位 ArrayBuffer，代表檔案區塊 (Chunk) 資料
+        if (event.data instanceof ArrayBuffer) {
+          if (sftpStream) {
+            const chunk = new Uint8Array(event.data);
+            sftpStream.write(chunk, (err) => {
+              if (err) {
+                server.send(JSON.stringify({ error: `寫入遠端檔案失敗: ${err.message}` }));
+                server.close(1011);
+                return;
+              }
+              // 回傳寫入確認 (ack)，藉此控制傳輸背壓與精準計量進度
+              server.send(JSON.stringify({ status: 'ack', written: chunk.length }));
+            });
+          } else {
+            server.send(JSON.stringify({ error: '寫入串流尚未建立' }));
+          }
+          return;
+        }
+
+        // 處理 JSON 控制指令
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.action === 'upload') {
+            const remotePath = `./${msg.filename}`; // 上傳至該使用者的家目錄
+            sftpStream = sftpClient.createWriteStream(remotePath, { flags: 'w', mode: 0o644 });
+            
+            sftpStream.on('error', (err) => {
+              server.send(JSON.stringify({ error: `建立遠端寫入流失敗: ${err.message}` }));
+              server.close(1011);
+            });
+
+            server.send(JSON.stringify({ status: 'start_ok' }));
+          } else if (msg.action === 'end') {
+            if (sftpStream) {
+              sftpStream.end(() => {
+                server.send(JSON.stringify({ status: 'success' }));
+                server.close();
+                sshClient.end();
+              });
+            } else {
+              server.send(JSON.stringify({ status: 'success' }));
+              server.close();
+              sshClient.end();
+            }
+          }
+        } catch (e) {
+          server.send(JSON.stringify({ error: `命令解析錯誤: ${e.message}` }));
+        }
+      });
+
+      server.addEventListener('close', () => {
+        if (sftpStream) sftpStream.end();
+        sshClient.end();
+      });
+
+      try {
+        const connectOptions = {
+          host: config.host,
+          port: config.port || 22,
+          username: config.username,
+          readyTimeout: 30000,
+          keepaliveInterval: 15000,
+          keepaliveCountMax: 3,
+          tryKeyboard: true,
+          algorithms: {
+            kex: [
+              'ecdh-sha2-nistp256',
+              'ecdh-sha2-nistp384',
+              'ecdh-sha2-nistp521',
+              'diffie-hellman-group14-sha256',
+              'diffie-hellman-group16-sha512',
+              'diffie-hellman-group-exchange-sha256'
+            ],
+            cipher: [
+              'aes128-ctr',
+              'aes192-ctr',
+              'aes256-ctr',
+              'aes128-cbc',
+              'aes192-cbc',
+              'aes256-cbc'
+            ]
+          }
+        };
+
+        if (config.privateKey) {
+          connectOptions.privateKey = config.privateKey;
+        } else {
+          connectOptions.password = config.password;
+        }
+
+        sshClient.connect(connectOptions);
+      } catch (err) {
+        server.send(JSON.stringify({ error: `SFTP 握手失敗: ${err.message}` }));
         server.close(1011);
       }
 
