@@ -1,12 +1,17 @@
 # cf-webssh
 
-一個基於 Cloudflare Workers 平台構建的輕量級 WebSSH 工具。
+一個基於 Cloudflare Workers (`workerd`) 平台構建的輕量級 WebSSH 工具。
 
 本專案利用 Cloudflare 原生 TCP 接口（透過相容性標誌 `nodejs_compat` 啟用 `cloudflare:sockets`）與遠端主機建立安全的 SSH 通道，並在瀏覽器前端使用 `xterm.js` 提供高度互動性的終端體驗。
 
 ## 🎯 專案特點
 
 - **無伺服器架構**：完全依賴 Cloudflare Workers 邊緣網路，無需部署與維護傳統的 WebSSH 後端伺服器（如 Bastion、Guacamole 等）。
+- **可選的管理密碼保護（新增）**：
+  - 支援設置環境變數 `ADMIN_PASSWORD` 作為管理員登入密碼。
+  - **向下相容**：若未配置該變數，系統會自動切換為免密碼模式（不顯示登入頁面），行為與原版本一致。
+  - **安全 Session 保護**：採用具有 `HttpOnly`、`Secure`、`SameSite=Strict` 屬性的安全 Cookie，能同時且安全地為 API 接口與 WebSocket 握手進行無狀態認證保護。
+  - **完整登出機制**：前端支援一鍵登出清除 Session。
 - **多伺服器配置管理**：支援記錄與維護多台伺服器的連線。所有主機資訊（不含密碼/私鑰）與敏感認證憑據（密碼、SSH 私鑰）皆安全地儲存於您個人的 Cloudflare KV 命名空間中。
 - **安全編輯與局部更新**：提供完整的「新增、刪除、編輯」功能。前端卡片支援一鍵編輯，且後端 `POST` API 具備局部合併機制，若您在編輯伺服器時未重新填寫密碼或私鑰，系統會自動保留原先在 KV 中的敏感認證資訊，避免遺失。
 - **優化的 xterm.js 終端**：
@@ -33,6 +38,9 @@
 3. 將代碼推送至 `main` 分支。
 4. GitHub Actions 工作流（`.github/workflows/deploy.yml`）會自動偵測您的 Cloudflare 帳戶中是否已存在 `WEBSSH_KV` 命名空間。若不存在，將自動為您建立，並**自動動態填入** `wrangler.toml` 中的 `KV_NAMESPACE_ID_PLACEHOLDER`，最後完成編譯與部署。您無需進行任何手動文件修改。
 
+> 💡 **如何在使用 GitHub Actions 部署時設置登入密碼？**
+> 請直接登入 [Cloudflare Dashboard](https://dash.cloudflare.com/)，進入您的 Workers 項目，點選 `Settings` -> `Variables` -> `Environment Variables`，手動新增變數 `ADMIN_PASSWORD`。為了安全性，請將其儲存類型設為 **Encrypt (Secret)**。
+
 ---
 
 ### 方法 B：從本機手動部署
@@ -57,7 +65,14 @@
    ```
    請將此段配置手動複製並替換掉您專案根目錄下 `wrangler.toml` 檔案內原本的預留欄位。
 
-3. **打包編譯與部署**
+3. **設定登入密碼（選填）**
+   推薦直接使用安全命令建立加密密碼，避免將明文密碼寫入代碼：
+   ```bash
+   npx wrangler secret put ADMIN_PASSWORD
+   ```
+   *（根據提示輸入您的安全密碼即可，此操作會將密碼直接以加密 Secret 格式上傳至 Cloudflare 端）*
+
+4. **打包編譯與部署**
    執行以下指令，系統會透過 `esbuild` 排除不相容的原生 binary 模組（並套用 `cpu-features` 模擬檔），隨後將程式碼發佈至 Cloudflare：
    ```bash
    npm run deploy
@@ -65,9 +80,6 @@
 
 ## 🔒 安全性建議
 
-雖然本專案中儲存的所有金鑰與密碼皆保留在您的 Cloudflare 專屬帳戶與 KV 儲存庫內，但本專案預設並未加載使用者帳密登入系統。為確保資產安全，強烈建議您配合以下任一安全方案使用：
-
-1. **Cloudflare Zero Trust / Cloudflare Access (推薦)**：
-   在 Cloudflare Zero Trust 控制面板中為您部署此 Worker 的域名設定一條 Access 存取策略，限定僅允許您信任的電子郵件（如使用 Google/GitHub 登入認證）或特定 IP 網段才能存取本 WebSSH 頁面。
-2. **新增基本身份驗證 (Basic Auth)**：
-   在 `src/index.js` 的 `fetch` 進入點前加入 HTTP Basic Authentication 或特定 Header 驗證，拒絕未授權的連線請求。
+1. **啟用內建密碼**：強烈建議在生產環境中設定 `ADMIN_PASSWORD` 加密 Secret。
+2. **Cloudflare Zero Trust / Cloudflare Access (雙重保障)**：
+   對於極高安全要求的用戶，除了設定 `ADMIN_PASSWORD`，還可以在 Cloudflare Zero Trust 控制面板中為您部署此 Worker 的域名設定一條 Access 存取策略，限定僅允許您信任的電子郵件（如使用 Google/GitHub 登入認證）或特定 IP 網段才能存取本 WebSSH 頁面。
