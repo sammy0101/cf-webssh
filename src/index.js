@@ -120,13 +120,19 @@ export default {
             server.send(data);
           });
 
-          stream.stderr.on('data', (data) => {
-            server.send(data);
-          });
+          if (stream.stderr) {
+            stream.stderr.on('data', (data) => {
+              server.send(data);
+            });
+          }
 
           stream.on('close', () => {
             server.close();
             sshClient.end();
+          });
+
+          stream.on('error', (err) => {
+            server.send(`\r\n[Stream Error]: ${err.message}\r\n`);
           });
         });
       });
