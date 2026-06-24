@@ -1,21 +1,5 @@
 # Complete Project Codebase
-Generated on: Wed Jun 24 16:05:11 UTC 2026
-
-## File: .vscode/settings.json
-````json
-{
-  "search.exclude": {
-    "**/node_modules": true,
-    "**/dist": true
-  },
-  "files.exclude": {
-    "**/node_modules": true,
-    "**/dist": true
-  },
-  "javascript.validate.enable": false
-}
-
-````
+Generated on: Wed Jun 24 16:14:07 UTC 2026
 
 ## File: README.md
 ````md
