@@ -27,7 +27,9 @@ const ignoreNodeExtensionsPlugin = {
 };
 
 // 撰寫具備高度診斷與防禦機制的 Banner 代碼
-const bannerJs = `import { createRequire } from 'node:module';
+// 在最頂端加入 // @ts-nocheck 即可讓 Cloudflare 網頁編輯器完全關閉型別檢驗與紅字報錯 (修改處)
+const bannerJs = `// @ts-nocheck
+import { createRequire } from 'node:module';
 const __filename = 'index.js';
 const __dirname = '/';
 const _origRequire = createRequire(import.meta.url || 'file:///index.js');
