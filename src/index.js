@@ -53,7 +53,7 @@ async function encryptText(text, key) {
   );
   const ivB64 = arrayBufferToBase64(iv);
   const cipherB64 = arrayBufferToBase64(ciphertext);
-  return `${ivB64}:${cipherB64}`; // 拼接儲存為 IV:密文 格式
+  return `${ivB64}:${cipherB64}`;
 }
 
 // 解密字串 (具備極強的防禦性防護與對舊明文數值/字串的向下相容)
@@ -75,7 +75,7 @@ async function decryptText(encryptedStr, key) {
     );
     return new TextDecoder().decode(decrypted);
   } catch (err) {
-    console.error("安全解密失敗:", err);
+    console.error("解密失敗:", err);
     throw new Error("憑據解密失敗。");
   }
 }
@@ -234,6 +234,7 @@ export default {
           }
         }
 
+        // 讀取自訂排序清單進行排序
         const orderVal = await env.WEBSSH_KV.get('connections_order');
         if (orderVal) {
           try {
@@ -377,7 +378,7 @@ export default {
       }
     }
 
-    // 3.6 API: 獲取常用腳本列表 (新增)
+    // 3.6 API: 獲取常用腳本列表 (明文傳輸與儲存)
     if (url.pathname === '/api/scripts' && request.method === 'GET') {
       try {
         const list = await env.WEBSSH_KV.list({ prefix: 'script:' });
@@ -396,6 +397,7 @@ export default {
             let decName = data.name || '';
             let decContent = data.content || '';
 
+            // 相容性支援：如果舊有腳本是加密格式，嘗試自動解密；如果是純明文，則直接返回
             if (isAuthEnabled && aesKey) {
               try {
                 decName = await decryptText(data.name, aesKey);
@@ -417,7 +419,7 @@ export default {
       }
     }
 
-    // 3.7 API: 儲存常用腳本 (新增)
+    // 3.7 API: 儲存常用腳本 (明文儲存，不加解密)
     if (url.pathname === '/api/scripts' && request.method === 'POST') {
       try {
         const data = await request.json();
@@ -426,20 +428,12 @@ export default {
         }
         const id = data.id || crypto.randomUUID();
 
-        let aesKey = null;
-        if (isAuthEnabled) {
-          aesKey = await deriveKey(adminPassword);
-        }
-
-        let storedName = data.name;
-        let storedContent = data.content;
-
-        if (isAuthEnabled && aesKey) {
-          storedName = await encryptText(data.name, aesKey);
-          storedContent = await encryptText(data.content, aesKey);
-        }
-
-        const scriptData = { id, name: storedName, content: storedContent };
+        // 常用腳本直接以純文字 (Plaintext) 形式寫入 KV
+        const scriptData = {
+          id,
+          name: data.name,
+          content: data.content
+        };
         await env.WEBSSH_KV.put(`script:${id}`, JSON.stringify(scriptData));
         return new Response(JSON.stringify({ success: true, id }), {
           headers: { 'Content-Type': 'application/json' }
@@ -449,7 +443,7 @@ export default {
       }
     }
 
-    // 3.8 API: 刪除常用腳本 (新增)
+    // 3.8 API: 刪除常用腳本
     if (url.pathname.startsWith('/api/scripts/') && request.method === 'DELETE') {
       try {
         const id = url.pathname.split('/').pop();
@@ -478,7 +472,7 @@ export default {
       }
     }
 
-    // 5. WebSocket 協議轉換為 TCP SSH 終端橋接 (自動即時解密全量欄位)
+    // 5. WebSocket 協議轉換為 TCP SSH 終端橋接
     if (url.pathname.startsWith('/ssh/') && request.headers.get('Upgrade') === 'websocket') {
       const id = url.pathname.split('/').pop();
       const connectionVal = await env.WEBSSH_KV.get(`connection:${id}`);
@@ -488,6 +482,7 @@ export default {
 
       const config = JSON.parse(connectionVal);
       
+      // 解密全部連線主機配置
       let finalHost = config.host || '';
       let finalPort = config.port || 22;
       let finalUsername = config.username || '';
@@ -647,7 +642,7 @@ export default {
       });
     }
 
-    // 6. WebSocket 單一通道 SFTP 全功能管理器 (自動即時解密全量欄位)
+    // 6. WebSocket 單一通道 SFTP 全功能管理器
     if (url.pathname.startsWith('/sftp/') && request.headers.get('Upgrade') === 'websocket') {
       const id = url.pathname.split('/').pop();
       const connectionVal = await env.WEBSSH_KV.get(`connection:${id}`);
