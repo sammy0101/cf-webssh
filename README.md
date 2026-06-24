@@ -2,7 +2,7 @@
 
 一個基於 Cloudflare Workers 平台構建的輕量級 WebSSH 與 SFTP 遠端檔案管理工具。
 
-本專案利用 Cloudflare 原生 TCP 接口（透過相容性標誌 `nodejs_compat` 啟用 `cloudflare:sockets`）與遠端主機建立安全的 SSH 通道，並在瀏覽器前端使用 `xterm.js` 提供高度互動性的終端體驗。
+本專案利用 Cloudflare 原生 TCP 接口（透過相容性標誌 `nodejs_compat` 啟用 `cloudflare:sockets`）與遠端主機建立安全的 SSH 通道，並在瀏覽器前端使用 `xterm.js` 提供高度互動性的終端體驗與視覺化檔案管理。
 
 ## 🎯 專案特點
 
@@ -23,7 +23,7 @@
   - **檔案刪除**：支援一鍵永久刪除遠端 VPS 上的檔案或空資料夾。
 - **優雅的系統圖示與 LOGO**：
   - **網站 Favicon**：採用動態嵌入的 SVG Data-URI 技術，完美替換分頁標籤上的地球預設圖標。
-  - **主視覺 LOGO**：主畫面與登入介面皆整合了極具現代感的終端游標圖示（`>_`）。
+  - **主視覺 LOGO**：主畫面與登入介面皆整合了極具現代感的終端機游標圖示（`>_`）。
 - **優化的 xterm.js 終端**：
   - **自動聚焦 (Auto Focus)**：連線載入完成後自動鎖定焦點，無需手動用滑鼠點擊即可直接開始打字輸入。
   - **視窗尺寸動態同步**：支援瀏覽器視窗縮放時，自動向遠端虛擬終端（Pseudo-terminal, PTY）發送 `resize` 訊號。
@@ -42,13 +42,13 @@
 
 本專案已內建完整的 CI/CD 自動化工作流。當您將專案推送到 GitHub 的 `main` 分支時，系統將會**全自動處理 KV 命名空間**：
 
-1. 將本專案上傳至您的 GitHub 私人儲存庫（Repository）。
+1. Fork 本項目。
 2. 在 GitHub 專案的 `Settings -> Secrets and variables -> Actions` 中，新增一個名為 `CLOUDFLARE_API_TOKEN` 的 Secret（此 Token 需具備編輯 Workers 與 KV 命名空間的權限）。
 3. 將代碼推送至 `main` 分支。
 4. GitHub Actions 工作流（`.github/workflows/deploy.yml`）會自動偵測您的 Cloudflare 帳戶中是否已存在 `WEBSSH_KV` 命名空間。若不存在，將自動為您建立，並**自動動態填入** `wrangler.toml` 中的 `KV_NAMESPACE_ID_PLACEHOLDER`，最後完成編譯與部署。您無需進行任何手動文件修改。
 
-> 💡 **如何在使用 GitHub Actions 部署時設置登入密碼？**
-> 請直接登入 [Cloudflare Dashboard](https://dash.cloudflare.com/)，進入您的 Workers 項目，點選 `Settings` -> `Variables` -> `Environment Variables`，手動新增變數 `ADMIN_PASSWORD`。為了安全性，請將其儲存類型設為 **Encrypt (Secret)**。
+> 💡 **如何在使用 GitHub Actions 部署時設置登入密碼與 AES 加密金鑰？**
+> 請直接登入 [Cloudflare Dashboard](https://dash.cloudflare.com/)，進入您的 Workers 項目，點選 `Settings` -> `Variables` -> `Environment Variables`，手動新增變數 `ADMIN_PASSWORD`。為了安全起見，請務必將其儲存類型設為 **Encrypt (Secret)**。此密碼一經儲存，除了用於登入外，還會自動在後端作為 AES-GCM 金鑰。
 
 ---
 
@@ -87,6 +87,53 @@
    npm run deploy
    ```
 
+## 🛡️ Cloudflare Zero Trust (Access) 安全加固詳細教學
+
+若要實現企業級的邊緣安全防護，極力建議您使用 Cloudflare 的 **Zero Trust (Access)** 來保護您的 WebSSH 專案。這能在外部請求觸發 Workers 與 KV 資料庫之前，強制對其進行一線身分驗證。
+
+### 📌 前提條件
+1. 您在 Cloudflare 上擁有一個已啟用的自訂網域（例如 `yourdomain.com`）。
+2. 已為此 Workers 綁定了自訂網域（在 Workers 控制台 -> `Settings` -> `Domains & Routes` -> `Add` -> 綁定如 `ssh.yourdomain.com`）。
+
+### 🛠️ 步驟 1：開啟 Zero Trust 控制台
+1. 登入 [Cloudflare 控制面板](https://dash.cloudflare.com/)。
+2. 在左側選單中，點擊 **「Zero Trust」**（若第一次進入，請按指示啟用免費訂閱計劃，支援最多 50 名使用者免費）。
+
+### 🛠️ 步驟 2：建立 Access 應用程式
+1. 在 Zero Trust 控制台左側選單，依序點擊 **「Access」** -> **「Applications」**。
+2. 點擊右上角的 **「Add an Application」（新增應用程式）**。
+3. 選擇 **「Self-hosted」（自我託管）** 類型。
+
+### 🛠️ 步驟 3：配置應用程式路徑
+1. **Application Name**：自訂一個名稱（如 `WebSSH Panel`）。
+2. **Session Duration**：保持預設，或自訂登入狀態有效期限。
+3. **Application Domain**（核心步驟）：
+   * **Subdomain**：輸入您的子網域（如 `ssh`）。
+   * **Domain**：選取您的自訂網域（如 `yourdomain.com`）。
+   * **Path**：保留空白即可（意即保護此子網域下的所有路徑，如 `ssh.yourdomain.com/*`）。
+4. 滾動到下方，點擊 **「Next」**。
+
+### 🛠️ 步驟 4：設定存取驗證策略 (Access Policy)
+1. **Policy Name**：自訂策略名稱（如 `限本人登入`）。
+2. **Action**：選擇 `Allow`。
+3. **Configure Rules (Include)**（設定允許的對象）：
+   * **Selector**：下拉選取 **「Emails」**。
+   * **Value**：輸入您個人的 Email 電子郵件（例如 `yourname@gmail.com`）。
+   * *提示：您也可以選擇「Email domains」並填入特定的域名（如 `yourcompany.com`），以允許該網域下的所有員工登入；或者配置 GitHub SSO / Google 登入。*
+4. 點擊 **「Next」**。
+
+### 🛠️ 步驟 5：設定 cookie 與完成
+1. 在最後一個「Setup」頁面，保持預設值不變。
+2. 點擊右下角的 **「Add Application」** 保存。
+
+---
+
+### 🎉 防護效果測試
+現在，不論是您自己或是任何外部使用者，在瀏覽器輸入 `https://ssh.yourdomain.com` 時，都不會直接看到您的 WebSSH 主介面。而是會自動跳轉至 **Cloudflare Access 安全登入頁面**，要求輸入電子郵件：
+1. 輸入您的 Email，Cloudflare 將發送一個 **一次性動態密碼 (OTP)** 至您的信箱。
+2. 輸入 OTP 通過驗證後，網頁才會順利載入您的 WebSSH 專案。
+3. **這是在網際網路最前線（邊緣節點）攔截惡意流量的極限安全手段！**
+
 ## 📝 關於 Cloudflare 網頁編輯器的「紅字錯誤」提示說明
 
 當您打開 Cloudflare Workers 網頁控制台的 **「Quick Edit（快速編輯）」** 線上代碼編輯器時，可能會在 `index.js`（即上傳的打包檔，約 22,000 行）看見數百個紅色或黃色的型別錯誤提示（例如：`Cannot find name 'Buffer'` 或 `Property 'performance' does not exist`）。
@@ -96,6 +143,6 @@
 
 ## 🔒 安全性建議
 
-1. **啟用內建密碼**：強烈建議在生產環境中設定 `ADMIN_PASSWORD` 加密 Secret。
+1. **啟用內建密碼**：強烈建議在生產環境中設定 `ADMIN_PASSWORD` 加密 Secret，這將同時啟用網頁門禁與後端 AES-GCM 零知識加密儲存。
 2. **Cloudflare Zero Trust / Cloudflare Access (雙重保障)**：
-   對於極高安全要求的用戶，除了設定 `ADMIN_PASSWORD`，還可以在 Cloudflare Zero Trust 控制面板中為您部署此 Worker 的域名設定一條 Access 存取策略，限定僅允許您信任的電子郵件（如使用 Google/GitHub 登入認證）或特定 IP 網段才能存取本 WebSSH 頁面。
+   對於極高安全要求的用戶，除了設定 `ADMIN_PASSWORD`，還可以依據上方的 **Zero Trust 教學** 為專案網域設定一條 Access 存取策略，限定僅允許您信任的電子郵件才能存取本 WebSSH 頁面。
