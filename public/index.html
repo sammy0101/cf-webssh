@@ -41,7 +41,7 @@
     <!-- 伺服器列表 -->
     <main>
       <div id="connections-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <!-- 動態渲染清單 -->
+        <!-- 動態渲染清單 (支援拖拽排序) -->
       </div>
       <div id="empty-state" class="hidden text-center py-20 text-slate-500">
         目前沒有儲存的伺服器，點擊右上角新增連線。
@@ -237,6 +237,7 @@
     let uploadFile = null;           // 當前正在上傳的 File 物件
     let uploadOffset = 0;            // 上傳目前偏移行數
     const uploadChunkSize = 64 * 1024; // 上傳分塊大小
+    let dragSourceEl = null;         // 拖拽源物件 (新增)
 
     // 啟動入口
     document.addEventListener("DOMContentLoaded", checkAuth);
@@ -308,7 +309,7 @@
       }
     }
 
-    // 4. 取得伺服器列表
+    // 4. 取得伺服器列表 (支援渲染可拖放卡片與註冊拖放監聽器)
     async function fetchConnections() {
       try {
         const res = await fetch('/api/connections');
@@ -329,10 +330,27 @@
 
         list.forEach(conn => {
           const card = document.createElement('div');
-          card.className = "bg-slate-900 border border-slate-800 rounded-lg p-5 flex flex-col justify-between hover:border-slate-700 transition shadow-md";
+          card.setAttribute('draggable', 'true'); // 啟用拖放
+          card.setAttribute('data-id', conn.id);  // 設定資料 ID 用於排序
+          card.className = "bg-slate-900 border border-slate-800 rounded-lg p-5 flex flex-col justify-between hover:border-slate-700 transition shadow-md cursor-grab active:cursor-grabbing group";
+          
+          // 註冊 HTML5 卡片拖曳排序監聽器 (新增)
+          card.addEventListener('dragstart', handleDragStart);
+          card.addEventListener('dragover', handleDragOver);
+          card.addEventListener('dragenter', handleDragEnter);
+          card.addEventListener('dragleave', handleDragLeave);
+          card.addEventListener('drop', handleDrop);
+          card.addEventListener('dragend', handleDragEnd);
+
           card.innerHTML = `
             <div>
-              <h3 class="text-lg font-bold text-slate-100">${conn.name}</h3>
+              <h3 class="text-lg font-bold text-slate-100 flex items-center justify-between">
+                <span>${conn.name}</span>
+                <!-- 拖放指示圖示 -->
+                <svg class="w-4 h-4 text-slate-600 group-hover:text-slate-400 select-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"></path>
+                </svg>
+              </h3>
               <p class="text-sm text-slate-400 font-mono mt-1">${conn.username}@${conn.host}:${conn.port}</p>
             </div>
             <div class="mt-5 flex justify-end space-x-2">
@@ -345,6 +363,88 @@
         });
       } catch (err) {
         console.error("無法取得伺服器列表:", err);
+      }
+    }
+
+    // ==========================================
+    // 🔀 卡片原生拖拽排序事件處理程序 (新增)
+    // ==========================================
+    function handleDragStart(e) {
+      this.style.opacity = '0.4';
+      dragSourceEl = this;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', this.getAttribute('data-id'));
+    }
+
+    function handleDragOver(e) {
+      if (e.preventDefault) {
+        e.preventDefault();
+      }
+      e.dataTransfer.dropEffect = 'move';
+      return false;
+    }
+
+    function handleDragEnter(e) {
+      this.classList.add('border-emerald-500'); // 懸停落點變為綠色
+    }
+
+    function handleDragLeave(e) {
+      this.classList.remove('border-emerald-500');
+    }
+
+    async function handleDrop(e) {
+      if (e.stopPropagation) {
+        e.stopPropagation();
+      }
+      
+      const targetEl = this;
+      const targetId = targetEl.getAttribute('data-id');
+      const sourceId = e.dataTransfer.getData('text/plain');
+
+      if (sourceId !== targetId) {
+        // 重排 DOM 卡片位置
+        const grid = document.getElementById('connections-grid');
+        const cards = Array.from(grid.children);
+        const sourceIdx = cards.findIndex(c => c.getAttribute('data-id') === sourceId);
+        const targetIdx = cards.findIndex(c => c.getAttribute('data-id') === targetId);
+
+        if (sourceIdx < targetIdx) {
+          grid.insertBefore(cards[sourceIdx], cards[targetIdx].nextSibling);
+        } else {
+          grid.insertBefore(cards[sourceIdx], cards[targetIdx]);
+        }
+
+        // 向後端上傳保存全新的排序數據
+        await saveConnectionsOrder();
+      }
+      return false;
+    }
+
+    function handleDragEnd(e) {
+      this.style.opacity = '1';
+      const grid = document.getElementById('connections-grid');
+      Array.from(grid.children).forEach(card => {
+        card.classList.remove('border-emerald-500');
+      });
+    }
+
+    // 將拖拽後的卡片順序陣列上傳至 KV (新增)
+    async function saveConnectionsOrder() {
+      const grid = document.getElementById('connections-grid');
+      const cards = Array.from(grid.querySelectorAll('[data-id]'));
+      const order = cards.map(c => c.getAttribute('data-id'));
+
+      try {
+        const res = await fetch('/api/connections/order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ order })
+        });
+        if (res.status === 401) {
+          showLoginOverlay();
+        }
+      } catch (err) {
+        console.error("保存排序失敗:", err);
       }
     }
 
@@ -525,6 +625,8 @@
       sftpWs.binaryType = 'arraybuffer';
 
       sftpWs.onopen = () => {
+        // WebSocket 通道已開啟，但遠端 SSH-SFTP 握手尚未完成。
+        // 此處僅變更提示狀態，等待後端傳送「ready」信號再進行資料載入。
         sftpCurrentPath = '.';
         fileListContainer.innerHTML = '<div class="text-slate-500 text-center py-8">正在連線遠端伺服器 (SSH)...</div>';
       };
@@ -734,7 +836,7 @@
       });
     }
 
-    // 6.3.5 新增「類 WINDOWS」路徑麵包屑動態渲染函數 (新增)
+    // 6.3.5 新增「類 WINDOWS」路徑麵包屑動態渲染函數
     function updateBreadcrumbs(path) {
       const container = document.getElementById('sftp-breadcrumbs');
       container.innerHTML = '';
