@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Wed Jun 24 17:09:23 UTC 2026
+Generated on: Wed Jun 24 17:18:34 UTC 2026
 
 ## File: README.md
 ````md
@@ -1038,7 +1038,6 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
         <button id="logout-btn" onclick="handleLogout()" class="hidden bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded font-medium transition text-sm">
           登出
         </button>
-        <!-- 新增腳本管理按鈕 -->
         <button onclick="showScriptsModal()" class="bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 px-4 py-2 rounded font-medium transition text-sm">
           📜 常用腳本
         </button>
@@ -1128,7 +1127,7 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
     </div>
   </div>
 
-  <!-- 常用腳本管理 Modal (新增) -->
+  <!-- 常用腳本管理 Modal -->
   <div id="scripts-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-40">
     <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-xl h-[70vh] flex flex-col shadow-2xl overflow-hidden">
       <div class="pb-3 border-b border-slate-800 flex justify-between items-center bg-slate-900">
@@ -1175,7 +1174,7 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
           📁 SFTP 檔案管理
         </button>
 
-        <!-- 常用腳本快速選單 (新增：可一鍵將指令注入當前終端機並按 Enter 鍵) -->
+        <!-- 常用腳本快速選單 -->
         <select id="terminal-script-select" onchange="runSelectedScript(this)" class="bg-slate-800 text-emerald-400 border border-slate-700 rounded px-2 py-1 text-xs font-medium focus:outline-none focus:border-emerald-500">
           <option value="" disabled selected>📜 常用腳本...</option>
           <!-- 動態渲染常用腳本選項 -->
@@ -1289,6 +1288,7 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
     let uploadOffset = 0;            // 上傳目前偏移行數
     const uploadChunkSize = 64 * 1024; // 上傳分塊大小
     let dragSourceEl = null;         // 拖拽源物件
+    let savedScripts = [];           // 全局快取腳本列表 (新增，配合樂觀更新機制，杜絕 KV 延遲問題)
 
     // 啟動入口
     document.addEventListener("DOMContentLoaded", checkAuth);
@@ -1303,14 +1303,14 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
           if (auth.authenticated) {
             document.getElementById('logout-btn').classList.remove('hidden');
             fetchConnections();
-            fetchScripts(); // 自動預加載常用腳本 (新增)
+            fetchScripts(); // 自動預加載常用腳本
           } else {
             showLoginOverlay();
           }
         } else {
           // 沒有啟用密碼驗證
           fetchConnections();
-          fetchScripts(); // 自動預加載常用腳本 (新增)
+          fetchScripts(); // 自動預加載常用腳本
         }
       } catch (err) {
         console.error("驗證檢查失敗:", err);
@@ -1679,8 +1679,6 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
       sftpWs.binaryType = 'arraybuffer';
 
       sftpWs.onopen = () => {
-        // WebSocket 通道已開啟，但遠端 SSH-SFTP 握手尚未完成。
-        // 此處僅變更提示狀態，等待後端傳送「ready」信號再進行資料載入。
         sftpCurrentPath = '.';
         fileListContainer.innerHTML = '<div class="text-slate-500 text-center py-8">正在連線遠端伺服器 (SSH)...</div>';
       };
@@ -2046,7 +2044,7 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
     }
 
     // ==========================================
-    // 📜 常用腳本控制函數群 (新增)
+    // 📜 常用腳本控制函數群
     // ==========================================
     async function fetchScripts() {
       try {
@@ -2055,9 +2053,9 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
           showLoginOverlay();
           return;
         }
-        const list = await res.json();
-        renderScriptsList(list);
-        populateTerminalScriptsDropdown(list);
+        savedScripts = await res.json(); // 更新全局變數快取 (優化)
+        renderScriptsList(savedScripts);
+        populateTerminalScriptsDropdown(savedScripts);
       } catch (err) {
         console.error("無法取得常用腳本列表:", err);
       }
@@ -2074,7 +2072,7 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
 
       list.forEach(scr => {
         const item = document.createElement('div');
-        item.className = "bg-slate-950 border border-slate-800 rounded p-3 flex justify-between items-center gap-4";
+        item.className = "bg-slate-950 border border-slate-800 rounded p-3 flex justify-between items-center gap-4 animate-fade-in";
         item.innerHTML = `
           <div class="truncate flex-1">
             <h4 class="font-bold text-slate-100">${scr.name}</h4>
@@ -2113,32 +2111,79 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
       document.getElementById('scripts-modal').classList.remove('flex');
     }
 
+    // 儲存常用腳本 (採用前端樂觀更新 Optimistic Update 模式，繞過 KV 一致性同步延遲)
     async function saveScript(event) {
       event.preventDefault();
-      const name = document.getElementById('script-name').value;
-      const content = document.getElementById('script-content').value;
+      const nameEl = document.getElementById('script-name');
+      const contentEl = document.getElementById('script-content');
 
-      await fetch('/api/scripts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, content })
-      });
+      const name = nameEl.value;
+      const content = contentEl.value;
+      const tempId = crypto.randomUUID(); // 生成暫時 ID
 
+      // 1. 立即推入前端快取並重新繪製列表 (0ms 反應)
+      const newScript = { id: tempId, name, content };
+      savedScripts.push(newScript);
+      renderScriptsList(savedScripts);
+      populateTerminalScriptsDropdown(savedScripts);
+
+      // 清空新增表單
       document.getElementById('script-form').reset();
-      fetchScripts();
+
+      // 2. 背景發送 POST 給後端 KV 進行寫入
+      try {
+        const res = await fetch('/api/scripts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: tempId, name, content })
+        });
+        const data = await res.json();
+        // 如果後端回傳了不一樣的 ID，更新快取 ID
+        if (data.id && data.id !== tempId) {
+          const idx = savedScripts.findIndex(s => s.id === tempId);
+          if (idx !== -1) {
+            savedScripts[idx].id = data.id;
+          }
+        }
+      } catch (err) {
+        console.error("腳本儲存至 KV 失敗:", err);
+        // 還原備份
+        savedScripts = savedScripts.filter(s => s.id !== tempId);
+        renderScriptsList(savedScripts);
+        populateTerminalScriptsDropdown(savedScripts);
+        alert('儲存腳本失敗，請檢查網路連線。');
+      }
     }
 
+    // 刪除常用腳本 (採用前端樂觀更新 Optimistic Update 模式)
     async function deleteScript(id) {
-      if (confirm('確定要刪除此常用腳本嗎？')) {
-        await fetch(`/api/scripts/${id}`, { method: 'DELETE' });
-        fetchScripts();
+      if (!confirm('確定要刪除此常用腳本嗎？')) return;
+
+      const backupScripts = [...savedScripts]; // 備份以防萬一
+
+      // 1. 立即在前端移除並重繪
+      savedScripts = savedScripts.filter(s => s.id !== id);
+      renderScriptsList(savedScripts);
+      populateTerminalScriptsDropdown(savedScripts);
+
+      // 2. 背景發送 DELETE 給後端 KV 進行刪除
+      try {
+        const res = await fetch(`/api/scripts/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Delete failed on server');
+      } catch (err) {
+        console.error("刪除腳本失敗:", err);
+        // 還原備份
+        savedScripts = backupScripts;
+        renderScriptsList(savedScripts);
+        populateTerminalScriptsDropdown(savedScripts);
+        alert('刪除腳本失敗。');
       }
     }
 
     function runSelectedScript(selectElement) {
       const command = selectElement.value;
       if (command && ws && ws.readyState === WebSocket.OPEN) {
-        // 直接將腳本指令寫入終端 WebSocket，並發送Enter (\r) 進行一鍵執行 (新增)
+        // 直接將腳本指令寫入終端 WebSocket，並發送Enter (\r) 進行一鍵執行
         ws.send(JSON.stringify({ type: 'data', data: command + '\r' }));
         selectElement.value = ''; // 復位下拉選單
       }
