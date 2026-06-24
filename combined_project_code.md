@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Wed Jun 24 16:14:07 UTC 2026
+Generated on: Wed Jun 24 16:14:20 UTC 2026
 
 ## File: README.md
 ````md
@@ -1690,24 +1690,6 @@ export default mock;
     "esbuild": "^0.20.0",
     "wrangler": "^3.50.0"
   }
-}
-
-````
-
-## File: jsconfig.json
-````json
-{
-  "compilerOptions": {
-    "target": "es2022",
-    "module": "esnext",
-    "moduleResolution": "node",
-    "checkJs": false,                "maxNodeModuleJsDepth": 0
-  },
-  "exclude": [
-    "node_modules",
-    "dist",
-    "combined_project_code.md"
-  ]
 }
 
 ````
