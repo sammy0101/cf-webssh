@@ -51,7 +51,7 @@
 
   <!-- 登入全螢幕遮罩 -->
   <div id="login-overlay" class="fixed inset-0 bg-slate-950 flex hidden items-center justify-center p-4 z-50 animate-fade-in">
-    <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-sm shadow-2xl text-center">
+    <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-sm shadow-2xl text-center">
       <!-- 登入介面的中置大型 LOGO -->
       <div class="flex justify-center mb-4">
         <svg class="w-16 h-16 text-emerald-400" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -157,7 +157,7 @@
     </div>
   </div>
 
-  <!-- SFTP 檔案管理器中央彈窗 Modal (提升層級為 z-[60]，解決被終端機 z-50 擋在底下的問題) -->
+  <!-- SFTP 檔案管理器中央彈窗 Modal (z-[60]) -->
   <div id="sftp-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-[60]">
     <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-2xl h-[80vh] flex flex-col shadow-2xl overflow-hidden animate-fade-in">
       
@@ -181,7 +181,7 @@
             整理 ↻
           </button>
         </div>
-        <!-- 手動上傳按鈕 -->
+        <!-- 整合至檔案管理器內的手動上傳按鈕 -->
         <button onclick="triggerFileInput()" class="text-xs bg-emerald-600 hover:bg-emerald-500 text-white px-3.5 py-1.5 rounded font-semibold transition flex items-center gap-1.5">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
@@ -190,10 +190,12 @@
         </button>
       </div>
 
-      <!-- 目前目錄路徑顯示欄 -->
+      <!-- 目前目錄路徑顯示欄（改為「類 WINDOWS」互動式麵包屑導航條） -->
       <div class="p-2 border-b border-slate-800 bg-slate-950 flex items-center gap-1">
-        <span class="text-xs text-slate-500 font-mono">路徑:</span>
-        <input type="text" id="sftp-current-path" readonly class="flex-1 bg-transparent border-none text-slate-300 text-[11px] font-mono select-all focus:outline-none">
+        <span class="text-xs text-slate-500 font-mono pr-1 select-none">路徑:</span>
+        <div id="sftp-breadcrumbs" class="flex-1 flex items-center flex-wrap gap-1 text-[11px] font-mono select-none">
+          <!-- 麵包屑節點將由 JavaScript 動態生成 -->
+        </div>
       </div>
 
       <!-- 檔案與資料夾清單區 -->
@@ -564,7 +566,7 @@
           // A. 檔案清單渲染
           else if (msg.status === 'list') {
             sftpCurrentPath = msg.path;
-            document.getElementById('sftp-current-path').value = sftpCurrentPath;
+            updateBreadcrumbs(sftpCurrentPath); // 動態更新麵包屑導航條
             renderSftpFiles(msg.files);
           }
 
@@ -729,6 +731,54 @@
         item.appendChild(info);
         item.appendChild(actions);
         fileListContainer.appendChild(item);
+      });
+    }
+
+    // 6.3.5 新增「類 WINDOWS」路徑麵包屑動態渲染函數 (新增)
+    function updateBreadcrumbs(path) {
+      const container = document.getElementById('sftp-breadcrumbs');
+      container.innerHTML = '';
+
+      // 確保開頭具備斜線（絕對路徑格式）
+      const normalizedPath = path.startsWith('/') ? path : '/' + path;
+      const parts = normalizedPath.split('/').filter(p => p.length > 0);
+
+      // 渲染根目錄 🏠 按鈕
+      const rootSpan = document.createElement('span');
+      rootSpan.className = "text-emerald-400 hover:text-emerald-300 hover:underline cursor-pointer font-bold flex items-center gap-0.5";
+      rootSpan.innerHTML = `🏠`;
+      rootSpan.title = "根目錄 /";
+      rootSpan.onclick = () => {
+        sftpCurrentPath = '/';
+        refreshSftpList();
+      };
+      container.appendChild(rootSpan);
+
+      let currentBuildPath = '';
+      parts.forEach((part, index) => {
+        // 渲染分隔符 /
+        const separator = document.createElement('span');
+        separator.className = "text-slate-600 px-1 select-none";
+        separator.textContent = '/';
+        container.appendChild(separator);
+
+        // 拼接累計到該節點的絕對路徑
+        currentBuildPath += '/' + part;
+        const targetPath = currentBuildPath; // 區塊變數固定
+
+        const partSpan = document.createElement('span');
+        // 若為最後一個節點（目前資料夾），高亮但不具備跳轉點擊功能
+        if (index === parts.length - 1) {
+          partSpan.className = "text-slate-200 font-bold px-0.5 select-all";
+        } else {
+          partSpan.className = "text-emerald-400 hover:text-emerald-300 hover:underline cursor-pointer px-0.5";
+          partSpan.onclick = () => {
+            sftpCurrentPath = targetPath;
+            refreshSftpList();
+          };
+        }
+        partSpan.textContent = part;
+        container.appendChild(partSpan);
       });
     }
 
