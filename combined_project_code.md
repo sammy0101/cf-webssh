@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Wed Jun 24 17:06:28 UTC 2026
+Generated on: Wed Jun 24 17:07:21 UTC 2026
 
 ## File: README.md
 ````md
@@ -1043,6 +1043,10 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
         <button id="logout-btn" onclick="handleLogout()" class="hidden bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded font-medium transition text-sm">
           登出
         </button>
+        <!-- 新增腳本管理按鈕 -->
+        <button onclick="showScriptsModal()" class="bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 px-4 py-2 rounded font-medium transition text-sm">
+          📜 常用腳本
+        </button>
         <button onclick="showAddModal()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded font-medium transition text-sm">
           新增伺服器
         </button>
@@ -1129,11 +1133,45 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
     </div>
   </div>
 
+  <!-- 常用腳本管理 Modal (新增) -->
+  <div id="scripts-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-40">
+    <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-xl h-[70vh] flex flex-col shadow-2xl overflow-hidden">
+      <div class="pb-3 border-b border-slate-800 flex justify-between items-center bg-slate-900">
+        <h2 class="text-xl font-bold text-emerald-400">📜 常用腳本管理</h2>
+        <button onclick="hideScriptsModal()" class="text-slate-400 hover:text-white text-sm font-bold p-1">
+          關閉 ✕
+        </button>
+      </div>
+      
+      <!-- 新增腳本表單 -->
+      <form id="script-form" onsubmit="saveScript(event)" class="py-4 border-b border-slate-800 space-y-3">
+        <div class="grid grid-cols-3 gap-3">
+          <div class="col-span-1">
+            <input type="text" id="script-name" required placeholder="腳本名稱 (如: 更新)" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
+          </div>
+          <div class="col-span-2">
+            <input type="text" id="script-content" required placeholder="指令內容 (如: apt update)" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
+          </div>
+        </div>
+        <div class="flex justify-end">
+          <button type="submit" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-1.5 rounded text-xs font-semibold transition">
+            + 新增腳本
+          </button>
+        </div>
+      </form>
+
+      <!-- 腳本列表區 -->
+      <div id="scripts-list" class="flex-1 overflow-y-auto pt-4 space-y-2 text-xs">
+        <!-- 動態渲染常用腳本清單 -->
+      </div>
+    </div>
+  </div>
+
   <!-- 終端機全螢幕容器 (z-50) -->
   <div id="terminal-screen" class="fixed inset-0 bg-black hidden flex-col z-50">
     <!-- 頂部資訊與控制欄 -->
     <div class="bg-slate-900 px-4 py-2 flex justify-between items-center border-b border-slate-800 text-sm">
-      <div class="flex items-center space-x-3">
+      <div class="flex items-center space-x-3 flex-wrap gap-y-2">
         <span id="active-terminal-title" class="font-mono text-slate-300">連線中...</span>
         
         <span class="text-slate-700 hidden md:inline">|</span>
@@ -1141,6 +1179,13 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
         <button onclick="toggleSftpModal()" class="text-xs bg-slate-800 hover:bg-slate-700 hover:text-emerald-300 text-emerald-400 border border-slate-700 px-2.5 py-1 rounded font-medium transition flex items-center gap-1.5">
           📁 SFTP 檔案管理
         </button>
+
+        <!-- 常用腳本快速選單 (新增：可一鍵將指令注入當前終端機並按 Enter 鍵) -->
+        <select id="terminal-script-select" onchange="runSelectedScript(this)" class="bg-slate-800 text-emerald-400 border border-slate-700 rounded px-2 py-1 text-xs font-medium focus:outline-none focus:border-emerald-500">
+          <option value="" disabled selected>📜 常用腳本...</option>
+          <!-- 動態渲染常用腳本選項 -->
+        </select>
+
         <span class="text-xs text-slate-500 hidden lg:inline">（亦支援滑鼠直接拖曳本機檔案至終端機內放開上傳）</span>
         
         <!-- 隱藏的檔案選擇 input -->
@@ -1248,7 +1293,7 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
     let uploadFile = null;           // 當前正在上傳的 File 物件
     let uploadOffset = 0;            // 上傳目前偏移行數
     const uploadChunkSize = 64 * 1024; // 上傳分塊大小
-    let dragSourceEl = null;         // 拖拽源物件 (新增)
+    let dragSourceEl = null;         // 拖拽源物件
 
     // 啟動入口
     document.addEventListener("DOMContentLoaded", checkAuth);
@@ -1263,12 +1308,14 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
           if (auth.authenticated) {
             document.getElementById('logout-btn').classList.remove('hidden');
             fetchConnections();
+            fetchScripts(); // 自動預加載常用腳本 (新增)
           } else {
             showLoginOverlay();
           }
         } else {
           // 沒有啟用密碼驗證
           fetchConnections();
+          fetchScripts(); // 自動預加載常用腳本 (新增)
         }
       } catch (err) {
         console.error("驗證檢查失敗:", err);
@@ -1298,6 +1345,7 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
           document.getElementById('login-overlay').classList.add('hidden');
           document.getElementById('logout-btn').classList.remove('hidden');
           fetchConnections();
+          fetchScripts(); // 自動預加載常用腳本
         } else {
           errorEl.textContent = data.error || '登入失敗';
           errorEl.classList.remove('hidden');
@@ -1345,7 +1393,7 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
           card.setAttribute('data-id', conn.id);  // 設定資料 ID 用於排序
           card.className = "bg-slate-900 border border-slate-800 rounded-lg p-5 flex flex-col justify-between hover:border-slate-700 transition shadow-md cursor-grab active:cursor-grabbing group";
           
-          // 註冊 HTML5 卡片拖曳排序監聽器 (新增)
+          // 註冊 HTML5 卡片拖曳排序監聽器
           card.addEventListener('dragstart', handleDragStart);
           card.addEventListener('dragover', handleDragOver);
           card.addEventListener('dragenter', handleDragEnter);
@@ -1378,7 +1426,7 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
     }
 
     // ==========================================
-    // 🔀 卡片原生拖拽排序事件處理程序 (新增)
+    // 🔀 卡片原生拖拽排序事件處理程序
     // ==========================================
     function handleDragStart(e) {
       this.style.opacity = '0.4';
@@ -1439,7 +1487,7 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
       });
     }
 
-    // 將拖拽後的卡片順序陣列上傳至 KV (新增)
+    // 將拖拽後的卡片順序陣列上傳至 KV
     async function saveConnectionsOrder() {
       const grid = document.getElementById('connections-grid');
       const cards = Array.from(grid.querySelectorAll('[data-id]'));
@@ -2000,6 +2048,105 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
       document.getElementById('upload-overlay').classList.add('hidden');
       document.getElementById('upload-overlay').classList.remove('flex');
       uploadFile = null;
+    }
+
+    // ==========================================
+    // 📜 常用腳本控制函數群 (新增)
+    // ==========================================
+    async function fetchScripts() {
+      try {
+        const res = await fetch('/api/scripts');
+        if (res.status === 401) {
+          showLoginOverlay();
+          return;
+        }
+        const list = await res.json();
+        renderScriptsList(list);
+        populateTerminalScriptsDropdown(list);
+      } catch (err) {
+        console.error("無法取得常用腳本列表:", err);
+      }
+    }
+
+    function renderScriptsList(list) {
+      const container = document.getElementById('scripts-list');
+      container.innerHTML = '';
+
+      if (list.length === 0) {
+        container.innerHTML = '<div class="text-slate-500 text-center py-12">目前無儲存的常用腳本，可在上方新增。</div>';
+        return;
+      }
+
+      list.forEach(scr => {
+        const item = document.createElement('div');
+        item.className = "bg-slate-950 border border-slate-800 rounded p-3 flex justify-between items-center gap-4";
+        item.innerHTML = `
+          <div class="truncate flex-1">
+            <h4 class="font-bold text-slate-100">${scr.name}</h4>
+            <p class="text-[11px] text-slate-400 font-mono mt-0.5 truncate">${scr.content}</p>
+          </div>
+          <button onclick="deleteScript('${scr.id}')" class="text-rose-500 hover:text-rose-400 px-2 py-1 transition text-xs">
+            刪除
+          </button>
+        `;
+        container.appendChild(item);
+      });
+    }
+
+    function populateTerminalScriptsDropdown(list) {
+      const select = document.getElementById('terminal-script-select');
+      // 保留第一個預設選項
+      select.innerHTML = '<option value="" disabled selected>📜 常用腳本...</option>';
+      
+      list.forEach(scr => {
+        const opt = document.createElement('option');
+        opt.value = scr.content;
+        opt.textContent = scr.name;
+        select.appendChild(opt);
+      });
+    }
+
+    function showScriptsModal() {
+      document.getElementById('script-form').reset();
+      document.getElementById('scripts-modal').classList.remove('hidden');
+      document.getElementById('scripts-modal').classList.add('flex');
+      fetchScripts();
+    }
+
+    function hideScriptsModal() {
+      document.getElementById('scripts-modal').classList.add('hidden');
+      document.getElementById('scripts-modal').classList.remove('flex');
+    }
+
+    async function saveScript(event) {
+      event.preventDefault();
+      const name = document.getElementById('script-name').value;
+      const content = document.getElementById('script-content').value;
+
+      await fetch('/api/scripts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, content })
+      });
+
+      document.getElementById('script-form').reset();
+      fetchScripts();
+    }
+
+    async function deleteScript(id) {
+      if (confirm('確定要刪除此常用腳本嗎？')) {
+        await fetch(`/api/scripts/${id}`, { method: 'DELETE' });
+        fetchScripts();
+      }
+    }
+
+    function runSelectedScript(selectElement) {
+      const command = selectElement.value;
+      if (command && ws && ws.readyState === WebSocket.OPEN) {
+        // 直接將腳本指令寫入終端 WebSocket，並發送Enter (\r) 進行一鍵執行 (新增)
+        ws.send(JSON.stringify({ type: 'data', data: command + '\r' }));
+        selectElement.value = ''; // 復位下拉選單
+      }
     }
 
     // 7. 連線至 SSH 終端機
