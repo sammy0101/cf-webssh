@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Tue Jun 23 19:16:11 UTC 2026
+Generated on: Wed Jun 24 15:44:09 UTC 2026
 
 ## File: README.md
 ````md
@@ -729,7 +729,7 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
 
   <!-- 登入全螢幕遮罩 -->
   <div id="login-overlay" class="fixed inset-0 bg-slate-950 flex hidden items-center justify-center p-4 z-50 animate-fade-in">
-    <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-sm shadow-2xl text-center">
+    <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-sm shadow-2xl text-center">
       <!-- 登入介面的中置大型 LOGO -->
       <div class="flex justify-center mb-4">
         <svg class="w-16 h-16 text-emerald-400" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -796,7 +796,7 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
     </div>
   </div>
 
-  <!-- 終端機全螢幕容器 -->
+  <!-- 終端機全螢幕容器 (z-50) -->
   <div id="terminal-screen" class="fixed inset-0 bg-black hidden flex-col z-50">
     <!-- 頂部資訊與控制欄 -->
     <div class="bg-slate-900 px-4 py-2 flex justify-between items-center border-b border-slate-800 text-sm">
@@ -818,7 +818,7 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
       </button>
     </div>
 
-    <!-- 工作區域：終端機容器 (維持滿版，確保排版穩定) -->
+    <!-- 工作區域：終端機容器 -->
     <div class="flex-1 flex overflow-hidden">
       <div id="terminal-container" class="flex-1 p-2 bg-black relative">
          <!-- SFTP 拖放上傳提示遮罩 -->
@@ -835,11 +835,11 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
     </div>
   </div>
 
-  <!-- SFTP 檔案管理器中央彈窗 Modal (新增：採用 fixed 居中視窗，100% 彈出且不受父容器擠壓) -->
-  <div id="sftp-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-40">
+  <!-- SFTP 檔案管理器中央彈窗 Modal (提升層級為 z-[60]，解決被終端機 z-50 擋在底下的問題) -->
+  <div id="sftp-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-[60]">
     <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-2xl h-[80vh] flex flex-col shadow-2xl overflow-hidden animate-fade-in">
       
-      <!-- 側邊欄標題 -->
+      <!-- 標題欄 -->
       <div class="pb-3 border-b border-slate-800 flex justify-between items-center bg-slate-900">
         <h3 class="font-bold text-emerald-400 text-base flex items-center gap-1.5">
           📁 SFTP 遠端檔案管理器
@@ -859,7 +859,7 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
             整理 ↻
           </button>
         </div>
-        <!-- 整合至檔案管理器內的手動上傳按鈕 -->
+        <!-- 手動上傳按鈕 -->
         <button onclick="triggerFileInput()" class="text-xs bg-emerald-600 hover:bg-emerald-500 text-white px-3.5 py-1.5 rounded font-semibold transition flex items-center gap-1.5">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
@@ -881,7 +881,7 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
     </div>
   </div>
 
-  <!-- 上傳與下載進度顯示遮罩 (維持原樣) -->
+  <!-- 上傳與下載進度顯示遮罩 (維持 z-50 原樣) -->
   <div id="upload-overlay" class="fixed inset-0 bg-black/70 hidden items-center justify-center p-4 z-50">
     <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-sm shadow-2xl text-center">
       <h3 class="text-lg font-bold text-emerald-400 mb-2">傳輸處理中 (SFTP)</h3>
