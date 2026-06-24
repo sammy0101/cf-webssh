@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Wed Jun 24 16:35:25 UTC 2026
+Generated on: Wed Jun 24 16:41:13 UTC 2026
 
 ## File: README.md
 ````md
@@ -112,7 +112,86 @@ Generated on: Wed Jun 24 16:35:25 UTC 2026
 import { Client } from 'ssh2';
 import htmlContent from '../public/index.html';
 
-// 使用 WebCrypto 計算 SHA-256 雜湊值
+// ==========================================
+// 🔐 安全對稱加密輔助函數 (AES-GCM-256)
+// ==========================================
+
+// 堆疊安全的 ArrayBuffer 轉 Base64 函數 (防範大檔案私鑰溢位)
+function arrayBufferToBase64(buffer) {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+// 堆疊安全的 Base64 轉 ArrayBuffer 函數
+function base64ToArrayBuffer(base64) {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
+// 根據管理密碼衍生對稱加密金鑰 (AES-GCM 256-bit)
+async function deriveKey(adminPassword) {
+  const passwordBytes = new TextEncoder().encode(adminPassword);
+  // 將密碼雜湊為 256 位元位元組組
+  const hash = await crypto.subtle.digest('SHA-256', passwordBytes);
+  return await crypto.subtle.importKey(
+    'raw',
+    hash,
+    { name: 'AES-GCM' },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
+// 加密明文字串
+async function encryptText(text, key) {
+  if (!text) return '';
+  const iv = crypto.getRandomValues(new Uint8Array(12)); // 12-byte IV 適用於 GCM
+  const encoded = new TextEncoder().encode(text);
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    encoded
+  );
+  const ivB64 = arrayBufferToBase64(iv);
+  const cipherB64 = arrayBufferToBase64(ciphertext);
+  return `${ivB64}:${cipherB64}`; // 拼接儲存為 IV:密文 格式
+}
+
+// 解密字串 (支援對舊明文資料的向下相容)
+async function decryptText(encryptedStr, key) {
+  if (!encryptedStr) return '';
+  const parts = encryptedStr.split(':');
+  // 降級兼容：如果沒有 ":" 冒號分隔，代表此檔案是先前未加密的舊明文，直接返回
+  if (parts.length !== 2) {
+    return encryptedStr;
+  }
+  try {
+    const [ivB64, cipherB64] = parts;
+    const iv = new Uint8Array(base64ToArrayBuffer(ivB64));
+    const ciphertext = base64ToArrayBuffer(cipherB64);
+    const decrypted = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv },
+      key,
+      ciphertext
+    );
+    return new TextDecoder().decode(decrypted);
+  } catch (err) {
+    console.error("安全解密失敗:", err);
+    throw new Error("憑據解密失敗。可能管理密碼已變更，或檔案在資料庫中已損壞。");
+  }
+}
+
+// 使用 WebCrypto 計算 SHA-256 雜湊值（用於登入 Session Token 簽章）
 async function hashPassword(password) {
   const msgBuffer = new TextEncoder().encode(password);
   const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
@@ -211,7 +290,7 @@ export default {
       });
     }
 
-    // 2. API: 獲取已儲存的連線列表
+    // 2. API: 獲取已儲存的連線列表 (不返回敏感的密碼與私鑰)
     if (url.pathname === '/api/connections' && request.method === 'GET') {
       try {
         const list = await env.WEBSSH_KV.list({ prefix: 'connection:' });
@@ -243,7 +322,7 @@ export default {
       }
     }
 
-    // 3. API: 新增/更新連線資訊
+    // 3. API: 新增/更新連線資訊 (儲存時自動 AES-GCM 加密密碼與私鑰)
     if (url.pathname === '/api/connections' && request.method === 'POST') {
       try {
         const data = await request.json();
@@ -255,12 +334,46 @@ export default {
         }
         const id = data.id || crypto.randomUUID();
 
+        // 1. 取得金鑰衍生變數
+        let aesKey = null;
+        if (isAuthEnabled) {
+          aesKey = await deriveKey(adminPassword);
+        }
+
+        // 2. 讀取並解密現有配置 (用於安全局部更新)
         const existingVal = await env.WEBSSH_KV.get(`connection:${id}`);
-        let existing = {};
+        let existingPlaintext = { password: '', privateKey: '' };
         if (existingVal) {
           try {
-            existing = JSON.parse(existingVal);
-          } catch (_) {}
+            const existingData = JSON.parse(existingVal);
+            if (isAuthEnabled && aesKey) {
+              // 解密原先已儲存的明文
+              existingPlaintext.password = await decryptText(existingData.password, aesKey);
+              existingPlaintext.privateKey = await decryptText(existingData.privateKey, aesKey);
+            } else {
+              existingPlaintext.password = existingData.password || '';
+              existingPlaintext.privateKey = existingData.privateKey || '';
+            }
+          } catch (_) {
+            // 如果解密失敗（可能使用者剛剛才開啟 ADMIN_PASSWORD 安全模式），相容退回明文讀取
+            try {
+              const existingData = JSON.parse(existingVal);
+              existingPlaintext.password = existingData.password || '';
+              existingPlaintext.privateKey = existingData.privateKey || '';
+            } catch (__) {}
+          }
+        }
+
+        // 3. 合併前端新傳入的明文與舊有的明文
+        const finalPlainPassword = data.password !== undefined ? data.password : existingPlaintext.password;
+        const finalPlainPrivateKey = data.privateKey !== undefined ? data.privateKey : existingPlaintext.privateKey;
+
+        // 4. 若開啟了密碼保護，將最終憑據加密為 AES 密文
+        let storedPassword = finalPlainPassword;
+        let storedPrivateKey = finalPlainPrivateKey;
+        if (isAuthEnabled && aesKey) {
+          storedPassword = await encryptText(finalPlainPassword, aesKey);
+          storedPrivateKey = await encryptText(finalPlainPrivateKey, aesKey);
         }
 
         const connectionData = {
@@ -269,8 +382,8 @@ export default {
           host: data.host,
           port: parseInt(data.port) || 22,
           username: data.username,
-          password: data.password !== undefined ? data.password : (existing.password || ''),
-          privateKey: data.privateKey !== undefined ? data.privateKey : (existing.privateKey || ''),
+          password: storedPassword,
+          privateKey: storedPrivateKey,
         };
         
         await env.WEBSSH_KV.put(`connection:${id}`, JSON.stringify(connectionData));
@@ -301,7 +414,7 @@ export default {
       }
     }
 
-    // 5. WebSocket 協議轉換為 TCP SSH 終端橋接
+    // 5. WebSocket 協議轉換為 TCP SSH 終端橋接 (自動解密憑據)
     if (url.pathname.startsWith('/ssh/') && request.headers.get('Upgrade') === 'websocket') {
       const id = url.pathname.split('/').pop();
       const connectionVal = await env.WEBSSH_KV.get(`connection:${id}`);
@@ -311,9 +424,24 @@ export default {
 
       const config = JSON.parse(connectionVal);
       
-      // 修改：使用 Object.values 進行型別安全的 WebSocketPair 解構 (修改處)
-      const [client, server] = Object.values(new WebSocketPair());
+      // 解密密碼與私鑰
+      let finalPassword = config.password || '';
+      let finalPrivateKey = config.privateKey || '';
+      if (isAuthEnabled) {
+        try {
+          const aesKey = await deriveKey(adminPassword);
+          finalPassword = await decryptText(config.password, aesKey);
+          finalPrivateKey = await decryptText(config.privateKey, aesKey);
+        } catch (err) {
+          const [client, server] = Object.values(new WebSocketPair());
+          server.accept();
+          server.send(`\r\n[CF-WebSSH 憑據解密錯誤]: ${err.message}\r\n`);
+          server.close(1011);
+          return new Response(null, { status: 101, webSocket: client });
+        }
+      }
 
+      const [client, server] = Object.values(new WebSocketPair());
       server.accept();
 
       const sshClient = new Client();
@@ -375,7 +503,7 @@ export default {
       });
 
       sshClient.on('keyboard-interactive', (name, instructions, lang, prompts, finish) => {
-        finish([config.password || '']);
+        finish([finalPassword]);
       });
 
       server.addEventListener('message', (event) => {
@@ -430,10 +558,10 @@ export default {
           }
         };
 
-        if (config.privateKey) {
-          connectOptions.privateKey = config.privateKey;
+        if (finalPrivateKey) {
+          connectOptions.privateKey = finalPrivateKey;
         } else {
-          connectOptions.password = config.password;
+          connectOptions.password = finalPassword;
         }
 
         sshClient.connect(connectOptions);
@@ -448,7 +576,7 @@ export default {
       });
     }
 
-    // 6. WebSocket 單一通道 SFTP 全功能管理器 (防禦性優化)
+    // 6. WebSocket 單一通道 SFTP 全功能管理器 (自動解密憑據)
     if (url.pathname.startsWith('/sftp/') && request.headers.get('Upgrade') === 'websocket') {
       const id = url.pathname.split('/').pop();
       const connectionVal = await env.WEBSSH_KV.get(`connection:${id}`);
@@ -457,10 +585,25 @@ export default {
       }
 
       const config = JSON.parse(connectionVal);
-      
-      // 修改：使用 Object.values 進行型別安全的 WebSocketPair 解構 (修改處)
-      const [client, server] = Object.values(new WebSocketPair());
 
+      // 解密密碼與私鑰
+      let finalPassword = config.password || '';
+      let finalPrivateKey = config.privateKey || '';
+      if (isAuthEnabled) {
+        try {
+          const aesKey = await deriveKey(adminPassword);
+          finalPassword = await decryptText(config.password, aesKey);
+          finalPrivateKey = await decryptText(config.privateKey, aesKey);
+        } catch (err) {
+          const [client, server] = Object.values(new WebSocketPair());
+          server.accept();
+          server.send(JSON.stringify({ status: 'error', message: `憑據解密失敗: ${err.message}` }));
+          server.close(1011);
+          return new Response(null, { status: 101, webSocket: client });
+        }
+      }
+
+      const [client, server] = Object.values(new WebSocketPair());
       server.accept();
 
       const sshClient = new Client();
@@ -477,7 +620,6 @@ export default {
             return;
           }
           sftpClient = sftp;
-          // 通知前端 SFTP 已成功初始化，此時前端才可以發送指令
           server.send(JSON.stringify({ status: 'ready' }));
         });
       });
@@ -487,9 +629,7 @@ export default {
         server.close(1011);
       });
 
-      // 接收 SFTP 管理控制封包
       server.addEventListener('message', async (event) => {
-        // A. 處理上傳檔案的二進位區塊 (Chunk)
         if (event.data instanceof ArrayBuffer) {
           if (uploadStream) {
             const chunk = new Uint8Array(event.data);
@@ -506,17 +646,14 @@ export default {
           return;
         }
 
-        // B. 處理 JSON 格式之控制指令
         try {
           const msg = JSON.parse(event.data);
 
-          // 核心防禦性檢查：若 SFTP 尚未 Ready，拒絕所有前端控制指令
           if (!sftpClient) {
             server.send(JSON.stringify({ status: 'error', message: '遠端 SSH/SFTP 連線仍在建立中，請稍候。' }));
             return;
           }
 
-          // 1. 取得檔案列表
           if (msg.action === 'list') {
             sftpClient.realpath(msg.path || '.', (err, absPath) => {
               const targetPath = err ? (msg.path || '.') : absPath;
@@ -540,7 +677,6 @@ export default {
             });
           }
 
-          // 2. 刪除檔案或資料夾
           else if (msg.action === 'delete') {
             const callback = (err) => {
               if (err) {
@@ -556,7 +692,6 @@ export default {
             }
           }
 
-          // 3. 啟動檔案上傳
           else if (msg.action === 'upload_start') {
             uploadStream = sftpClient.createWriteStream(msg.path, { flags: 'w', mode: 0o644 });
             uploadStream.on('error', (err) => {
@@ -565,7 +700,6 @@ export default {
             server.send(JSON.stringify({ status: 'upload_ready' }));
           }
 
-          // 4. 結束檔案上傳
           else if (msg.action === 'upload_end') {
             if (uploadStream) {
               uploadStream.end(() => {
@@ -577,7 +711,6 @@ export default {
             }
           }
 
-          // 5. 取消上傳
           else if (msg.action === 'upload_cancel') {
             if (uploadStream) {
               uploadStream.end(() => {
@@ -586,7 +719,6 @@ export default {
             }
           }
 
-          // 6. 啟動檔案下載 (流量控制)
           else if (msg.action === 'download_start') {
             const filename = msg.path.split('/').pop() || 'download';
             downloadStream = sftpClient.createReadStream(msg.path);
@@ -609,7 +741,6 @@ export default {
             });
           }
 
-          // 7. 請求下載下一個檔案區塊
           else if (msg.action === 'download_next') {
             if (downloadStream) {
               downloadStream.resume();
@@ -642,10 +773,10 @@ export default {
           }
         };
 
-        if (config.privateKey) {
-          connectOptions.privateKey = config.privateKey;
+        if (finalPrivateKey) {
+          connectOptions.privateKey = finalPrivateKey;
         } else {
-          connectOptions.password = config.password;
+          connectOptions.password = finalPassword;
         }
 
         sshClient.connect(connectOptions);
