@@ -30,7 +30,6 @@ function base64ToArrayBuffer(base64) {
 // 根據管理密碼衍生對稱加密金鑰 (AES-GCM 256-bit)
 async function deriveKey(adminPassword) {
   const passwordBytes = new TextEncoder().encode(adminPassword);
-  // 將密碼雜湊為 256 位元位元組
   const hash = await crypto.subtle.digest('SHA-256', passwordBytes);
   return await crypto.subtle.importKey(
     'raw',
@@ -45,7 +44,7 @@ async function deriveKey(adminPassword) {
 async function encryptText(text, key) {
   if (text === undefined || text === null) return '';
   const str = String(text);
-  const iv = crypto.getRandomValues(new Uint8Array(12)); // 12-byte IV 適用於 GCM
+  const iv = crypto.getRandomValues(new Uint8Array(12));
   const encoded = new TextEncoder().encode(str);
   const ciphertext = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv },
@@ -54,16 +53,14 @@ async function encryptText(text, key) {
   );
   const ivB64 = arrayBufferToBase64(iv);
   const cipherB64 = arrayBufferToBase64(ciphertext);
-  return `${ivB64}:${cipherB64}`; // 拼接儲存為 IV:密文 格式
+  return `${ivB64}:${cipherB64}`;
 }
 
-// 解密字串 (具備極強的防禦性防護與對舊明文數值/字串的向下相容)
+// 解密字串 (支援對舊明文數值/字串的向下相容)
 async function decryptText(encryptedStr, key) {
   if (encryptedStr === undefined || encryptedStr === null) return '';
-  // 轉為字串處理以防範數值型欄位（如未加密時的舊 port 數值）
   const str = String(encryptedStr);
   const parts = str.split(':');
-  // 降級相容：如果沒有 ":" 冒號分隔符，代表是未加密的舊明文，直接返回
   if (parts.length !== 2) {
     return str;
   }
@@ -78,8 +75,8 @@ async function decryptText(encryptedStr, key) {
     );
     return new TextDecoder().decode(decrypted);
   } catch (err) {
-    console.error("安全解密失敗:", err);
-    throw new Error("憑據解密失敗。可能管理密碼已變更，或檔案在庫中損壞。");
+    console.error("解密失敗:", err);
+    throw new Error("憑據解密失敗。");
   }
 }
 
@@ -100,11 +97,9 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    // 讀取環境變數中的管理密碼
     const adminPassword = env.ADMIN_PASSWORD;
     const isAuthEnabled = typeof adminPassword === 'string' && adminPassword.length > 0;
 
-    // Cookie 讀取輔助函數
     const getCookie = (name) => {
       const value = `; ${request.headers.get('Cookie') || ''}`;
       const parts = value.split(`; ${name}=`);
@@ -112,7 +107,6 @@ export default {
       return null;
     };
 
-    // 驗證當前連線是否已授權
     const isAuthorized = async () => {
       if (!isAuthEnabled) return true;
       const token = getCookie('webssh_token');
@@ -121,7 +115,7 @@ export default {
       return token === expected;
     };
 
-    // 安全防禦門禁：若啟用密碼驗證且未授權，阻擋所有非公開路徑
+    // 安全防禦門禁
     const publicPaths = ['/', '/index.html', '/api/login', '/api/auth-check', '/api/logout'];
     if (!publicPaths.includes(url.pathname)) {
       if (!(await isAuthorized())) {
@@ -182,15 +176,14 @@ export default {
       });
     }
 
-    // 2. API: 獲取已儲存的連線列表 (讀取時即時 AES 解密還原明文供前端使用)
+    // 2. API: 獲取已儲存的連線列表 (支援從 KV 讀取並合併 connections_order 排序清單)
     if (url.pathname === '/api/connections' && request.method === 'GET') {
       try {
         const list = await env.WEBSSH_KV.list({ prefix: 'connection:' });
         const keys = list.keys;
         const values = await Promise.all(keys.map(key => env.WEBSSH_KV.get(key.name)));
-        const connections = [];
+        let connections = [];
 
-        // 準備對稱解密金鑰
         let aesKey = null;
         if (isAuthEnabled) {
           aesKey = await deriveKey(adminPassword);
@@ -217,7 +210,6 @@ export default {
                 const decPrivateKey = await decryptText(data.privateKey, aesKey);
                 hasPrivateKey = typeof decPrivateKey === 'string' && decPrivateKey.length > 0;
               } catch (err) {
-                // 解密失敗則安全相容地退回原明文 (相容舊有未加密連線)
                 decName = data.name || '';
                 decHost = data.host || '';
                 decPort = parseInt(data.port) || 22;
@@ -238,6 +230,22 @@ export default {
             });
           }
         }
+
+        // 讀取自訂排序清單進行排序
+        const orderVal = await env.WEBSSH_KV.get('connections_order');
+        if (orderVal) {
+          try {
+            const orderArray = JSON.parse(orderVal);
+            connections.sort((a, b) => {
+              let idxA = orderArray.indexOf(a.id);
+              let idxB = orderArray.indexOf(b.id);
+              if (idxA === -1) idxA = 99999;
+              if (idxB === -1) idxB = 99999;
+              return idxA - idxB;
+            });
+          } catch (_) {}
+        }
+
         return new Response(JSON.stringify(connections), {
           headers: { 'Content-Type': 'application/json' },
         });
@@ -249,7 +257,7 @@ export default {
       }
     }
 
-    // 3. API: 新增/更新連線資訊 (儲存時將全部資訊：主機、名稱、端口、使用者名稱、密碼與私鑰全數進行高強度 AES 加密)
+    // 3. API: 新增/更新連線資訊
     if (url.pathname === '/api/connections' && request.method === 'POST') {
       try {
         const data = await request.json();
@@ -261,20 +269,17 @@ export default {
         }
         const id = data.id || crypto.randomUUID();
 
-        // 1. 取得金鑰衍生變數
         let aesKey = null;
         if (isAuthEnabled) {
           aesKey = await deriveKey(adminPassword);
         }
 
-        // 2. 讀取並解密現有配置 (用於安全局部更新)
         const existingVal = await env.WEBSSH_KV.get(`connection:${id}`);
         let existingPlaintext = { name: '', host: '', port: 22, username: '', password: '', privateKey: '' };
         if (existingVal) {
           try {
             const existingData = JSON.parse(existingVal);
             if (isAuthEnabled && aesKey) {
-              // 解密原先已儲存的所有欄位明文
               existingPlaintext.name = await decryptText(existingData.name, aesKey);
               existingPlaintext.host = await decryptText(existingData.host, aesKey);
               const decPortStr = await decryptText(existingData.port, aesKey);
@@ -291,7 +296,6 @@ export default {
               existingPlaintext.privateKey = existingData.privateKey || '';
             }
           } catch (_) {
-            // 如果解密失敗（可能使用者剛剛才開啟安全模式），相容退回明文讀取
             try {
               const existingData = JSON.parse(existingVal);
               existingPlaintext.name = existingData.name || '';
@@ -304,7 +308,6 @@ export default {
           }
         }
 
-        // 3. 合併前端新傳入的明文與舊有的明文
         const finalName = data.name !== undefined ? data.name : existingPlaintext.name;
         const finalHost = data.host !== undefined ? data.host : existingPlaintext.host;
         const finalPort = data.port !== undefined ? parseInt(data.port) : existingPlaintext.port;
@@ -312,7 +315,6 @@ export default {
         const finalPassword = data.password !== undefined ? data.password : existingPlaintext.password;
         const finalPrivateKey = data.privateKey !== undefined ? data.privateKey : existingPlaintext.privateKey;
 
-        // 4. 若開啟了密碼保護，將連線設定所有欄位一併加密為 AES 密文
         let storedName = finalName;
         let storedHost = finalHost;
         let storedPort = String(finalPort);
@@ -351,6 +353,28 @@ export default {
       }
     }
 
+    // 3.5 API: 更新自訂排序清單 (新增)
+    if (url.pathname === '/api/connections/order' && request.method === 'POST') {
+      try {
+        const { order } = await request.json();
+        if (Array.isArray(order)) {
+          await env.WEBSSH_KV.put('connections_order', JSON.stringify(order));
+          return new Response(JSON.stringify({ success: true }), {
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        return new Response(JSON.stringify({ error: '無效的排序格式' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
     // 4. API: 刪除連線資訊
     if (url.pathname.startsWith('/api/connections/') && request.method === 'DELETE') {
       try {
@@ -367,7 +391,7 @@ export default {
       }
     }
 
-    // 5. WebSocket 協議轉換為 TCP SSH 終端橋接 (自動即時解密全量欄位)
+    // 5. WebSocket 協議轉換為 TCP SSH 終端橋接
     if (url.pathname.startsWith('/ssh/') && request.headers.get('Upgrade') === 'websocket') {
       const id = url.pathname.split('/').pop();
       const connectionVal = await env.WEBSSH_KV.get(`connection:${id}`);
@@ -377,7 +401,6 @@ export default {
 
       const config = JSON.parse(connectionVal);
       
-      // 解密全部連線主機配置
       let finalHost = config.host || '';
       let finalPort = config.port || 22;
       let finalUsername = config.username || '';
@@ -537,7 +560,7 @@ export default {
       });
     }
 
-    // 6. WebSocket 單一通道 SFTP 全功能管理器 (自動即時解密全量欄位)
+    // 6. WebSocket 單一通道 SFTP 全功能管理器
     if (url.pathname.startsWith('/sftp/') && request.headers.get('Upgrade') === 'websocket') {
       const id = url.pathname.split('/').pop();
       const connectionVal = await env.WEBSSH_KV.get(`connection:${id}`);
@@ -547,7 +570,6 @@ export default {
 
       const config = JSON.parse(connectionVal);
 
-      // 解密全部連線主機配置
       let finalHost = config.host || '';
       let finalPort = config.port || 22;
       let finalUsername = config.username || '';
@@ -598,7 +620,6 @@ export default {
         server.close(1011);
       });
 
-      // 接收 SFTP 管理控制封包
       server.addEventListener('message', async (event) => {
         if (event.data instanceof ArrayBuffer) {
           if (uploadStream) {
