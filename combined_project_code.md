@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Wed Jun 24 16:57:28 UTC 2026
+Generated on: Wed Jun 24 17:06:28 UTC 2026
 
 ## File: README.md
 ````md
@@ -155,7 +155,7 @@ async function deriveKey(adminPassword) {
 async function encryptText(text, key) {
   if (text === undefined || text === null) return '';
   const str = String(text);
-  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const iv = crypto.getRandomValues(new Uint8Array(12)); // 12-byte IV 適用於 GCM
   const encoded = new TextEncoder().encode(str);
   const ciphertext = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv },
@@ -164,10 +164,10 @@ async function encryptText(text, key) {
   );
   const ivB64 = arrayBufferToBase64(iv);
   const cipherB64 = arrayBufferToBase64(ciphertext);
-  return `${ivB64}:${cipherB64}`;
+  return `${ivB64}:${cipherB64}`; // 拼接儲存為 IV:密文 格式
 }
 
-// 解密字串 (支援對舊明文數值/字串的向下相容)
+// 解密字串 (具備極強的防禦性防護與對舊明文數值/字串的向下相容)
 async function decryptText(encryptedStr, key) {
   if (encryptedStr === undefined || encryptedStr === null) return '';
   const str = String(encryptedStr);
@@ -186,7 +186,7 @@ async function decryptText(encryptedStr, key) {
     );
     return new TextDecoder().decode(decrypted);
   } catch (err) {
-    console.error("解密失敗:", err);
+    console.error("安全解密失敗:", err);
     throw new Error("憑據解密失敗。");
   }
 }
@@ -208,9 +208,11 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
+    // 讀取環境變數中的管理密碼
     const adminPassword = env.ADMIN_PASSWORD;
     const isAuthEnabled = typeof adminPassword === 'string' && adminPassword.length > 0;
 
+    // Cookie 讀取輔助函數
     const getCookie = (name) => {
       const value = `; ${request.headers.get('Cookie') || ''}`;
       const parts = value.split(`; ${name}=`);
@@ -218,6 +220,7 @@ export default {
       return null;
     };
 
+    // 驗證當前連線是否已授權
     const isAuthorized = async () => {
       if (!isAuthEnabled) return true;
       const token = getCookie('webssh_token');
@@ -226,7 +229,7 @@ export default {
       return token === expected;
     };
 
-    // 安全防禦門禁
+    // 安全防禦門禁：若啟用密碼驗證且未授權，阻擋所有非公開路徑
     const publicPaths = ['/', '/index.html', '/api/login', '/api/auth-check', '/api/logout'];
     if (!publicPaths.includes(url.pathname)) {
       if (!(await isAuthorized())) {
@@ -287,7 +290,7 @@ export default {
       });
     }
 
-    // 2. API: 獲取已儲存的連線列表 (支援從 KV 讀取並合併 connections_order 排序清單)
+    // 2. API: 獲取已儲存的連線列表
     if (url.pathname === '/api/connections' && request.method === 'GET') {
       try {
         const list = await env.WEBSSH_KV.list({ prefix: 'connection:' });
@@ -342,7 +345,6 @@ export default {
           }
         }
 
-        // 讀取自訂排序清單進行排序
         const orderVal = await env.WEBSSH_KV.get('connections_order');
         if (orderVal) {
           try {
@@ -464,7 +466,7 @@ export default {
       }
     }
 
-    // 3.5 API: 更新自訂排序清單 (新增)
+    // 3.5 API: 更新自訂排序清單
     if (url.pathname === '/api/connections/order' && request.method === 'POST') {
       try {
         const { order } = await request.json();
@@ -486,6 +488,91 @@ export default {
       }
     }
 
+    // 3.6 API: 獲取常用腳本列表 (新增)
+    if (url.pathname === '/api/scripts' && request.method === 'GET') {
+      try {
+        const list = await env.WEBSSH_KV.list({ prefix: 'script:' });
+        const keys = list.keys;
+        const values = await Promise.all(keys.map(key => env.WEBSSH_KV.get(key.name)));
+        const scripts = [];
+
+        let aesKey = null;
+        if (isAuthEnabled) {
+          aesKey = await deriveKey(adminPassword);
+        }
+
+        for (const val of values) {
+          if (val) {
+            const data = JSON.parse(val);
+            let decName = data.name || '';
+            let decContent = data.content || '';
+
+            if (isAuthEnabled && aesKey) {
+              try {
+                decName = await decryptText(data.name, aesKey);
+                decContent = await decryptText(data.content, aesKey);
+              } catch (_) {
+                decName = data.name || '';
+                decContent = data.content || '';
+              }
+            }
+
+            scripts.push({ id: data.id, name: decName, content: decContent });
+          }
+        }
+        return new Response(JSON.stringify(scripts), {
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), { status: 500 });
+      }
+    }
+
+    // 3.7 API: 儲存常用腳本 (新增)
+    if (url.pathname === '/api/scripts' && request.method === 'POST') {
+      try {
+        const data = await request.json();
+        if (!data.name || !data.content) {
+          return new Response(JSON.stringify({ error: '缺少必要欄位' }), { status: 400 });
+        }
+        const id = data.id || crypto.randomUUID();
+
+        let aesKey = null;
+        if (isAuthEnabled) {
+          aesKey = await deriveKey(adminPassword);
+        }
+
+        let storedName = data.name;
+        let storedContent = data.content;
+
+        if (isAuthEnabled && aesKey) {
+          storedName = await encryptText(data.name, aesKey);
+          storedContent = await encryptText(data.content, aesKey);
+        }
+
+        const scriptData = { id, name: storedName, content: storedContent };
+        await env.WEBSSH_KV.put(`script:${id}`, JSON.stringify(scriptData));
+        return new Response(JSON.stringify({ success: true, id }), {
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), { status: 500 });
+      }
+    }
+
+    // 3.8 API: 刪除常用腳本 (新增)
+    if (url.pathname.startsWith('/api/scripts/') && request.method === 'DELETE') {
+      try {
+        const id = url.pathname.split('/').pop();
+        await env.WEBSSH_KV.delete(`script:${id}`);
+        return new Response(JSON.stringify({ success: true }), {
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), { status: 500 });
+      }
+    }
+
     // 4. API: 刪除連線資訊
     if (url.pathname.startsWith('/api/connections/') && request.method === 'DELETE') {
       try {
@@ -502,7 +589,7 @@ export default {
       }
     }
 
-    // 5. WebSocket 協議轉換為 TCP SSH 終端橋接
+    // 5. WebSocket 協議轉換為 TCP SSH 終端橋接 (自動即時解密全量欄位)
     if (url.pathname.startsWith('/ssh/') && request.headers.get('Upgrade') === 'websocket') {
       const id = url.pathname.split('/').pop();
       const connectionVal = await env.WEBSSH_KV.get(`connection:${id}`);
@@ -671,7 +758,7 @@ export default {
       });
     }
 
-    // 6. WebSocket 單一通道 SFTP 全功能管理器
+    // 6. WebSocket 單一通道 SFTP 全功能管理器 (自動即時解密全量欄位)
     if (url.pathname.startsWith('/sftp/') && request.headers.get('Upgrade') === 'websocket') {
       const id = url.pathname.split('/').pop();
       const connectionVal = await env.WEBSSH_KV.get(`connection:${id}`);
@@ -852,12 +939,6 @@ export default {
         } catch (e) {
           server.send(JSON.stringify({ status: 'error', message: `SFTP 協定解析錯誤: ${e.message}` }));
         }
-      });
-
-      server.addEventListener('close', () => {
-        if (uploadStream) uploadStream.end();
-        if (downloadStream) downloadStream.destroy();
-        sshClient.end();
       });
 
       try {
