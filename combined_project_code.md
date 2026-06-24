@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Wed Jun 24 16:15:35 UTC 2026
+Generated on: Wed Jun 24 16:26:01 UTC 2026
 
 ## File: README.md
 ````md
@@ -94,7 +94,6 @@ Generated on: Wed Jun 24 16:15:35 UTC 2026
 ## File: src/index.js
 ````js
 import { Client } from 'ssh2';
-import { Readable } from 'node:stream';
 import htmlContent from '../public/index.html';
 
 // 使用 WebCrypto 計算 SHA-256 雜湊值
@@ -295,7 +294,9 @@ export default {
       }
 
       const config = JSON.parse(connectionVal);
-      const [client, server] = new WebSocketPair();
+      
+      // 修改：使用 Object.values 進行型別安全的 WebSocketPair 解構 (修改處)
+      const [client, server] = Object.values(new WebSocketPair());
 
       server.accept();
 
@@ -440,7 +441,9 @@ export default {
       }
 
       const config = JSON.parse(connectionVal);
-      const [client, server] = new WebSocketPair();
+      
+      // 修改：使用 Object.values 進行型別安全的 WebSocketPair 解構 (修改處)
+      const [client, server] = Object.values(new WebSocketPair());
 
       server.accept();
 
@@ -464,7 +467,7 @@ export default {
       });
 
       sshClient.on('error', (err) => {
-        server.send(JSON.stringify({ status: 'error', message: `SSH 連線錯誤: ${err.message}` }));
+        server.send(JSON.stringify({ error: `SSH 連線錯誤: ${err.message}` }));
         server.close(1011);
       });
 
