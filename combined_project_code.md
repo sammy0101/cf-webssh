@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Thu Jun 25 11:00:19 UTC 2026
+Generated on: Thu Jun 25 11:04:37 UTC 2026
 
 ## File: README.md
 ````md
@@ -1107,13 +1107,36 @@ let sftpCurrentPath = '.';       // 當前檔案管理器絕對路徑
 let sftpModalOpen = false;       // 檔案管理器彈窗開關狀態 (改為 Modal)
 let sftpFileChunks = [];         // 用於下載儲存二進位區塊
 let currentDownloadingFilename = ''; // 當前正在下載的檔名
-let uploadFile = null;           // 當前正在上傳的 File 物件
+let uploadFile = null;           // 當前正在上傳 the File 物件
 let uploadOffset = 0;            // 上傳目前偏移行數
 const uploadChunkSize = 64 * 1024; // 上傳分塊大小
 let dragSourceEl = null;         // 拖拽源物件
 let savedScripts = [];           // 全局快取腳本列表
 let sftpModalModalOpen = false;  // 前端用來檢測 SFTP 是否已打開的變數
 let editingFilePath = '';        // 當前編輯中的遠端純文字路徑
+
+// ==========================================
+// 🔑 瀏覽器端堆疊安全之二進位轉碼輔助函數 (新增，修復未定義錯誤)
+// ==========================================
+function arrayBufferToBase64(buffer) {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+function base64ToArrayBuffer(base64) {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
 
 // 啟動入口
 document.addEventListener("DOMContentLoaded", checkAuth);
@@ -1286,11 +1309,11 @@ async function handleDrop(e) {
     const sourceIdx = cards.findIndex(c => c.getAttribute('data-id') === sourceId);
     const targetIdx = cards.findIndex(c => c.getAttribute('data-id') === targetId);
 
-    if (sourceIdx < targetIdx) {
-      grid.insertBefore(cards[sourceIdx], cards[targetIdx].nextSibling);
-    } else {
-      grid.insertBefore(cards[sourceIdx], cards[targetIdx]);
-    }
+        if (sourceIdx < targetIdx) {
+          grid.insertBefore(cards[sourceIdx], cards[targetIdx].nextSibling);
+        } else {
+          grid.insertBefore(cards[sourceIdx], cards[targetIdx]);
+        }
 
     // 向後端上傳保存全新的排序數據
     await saveConnectionsOrder();
@@ -1625,7 +1648,7 @@ function disconnectSftpWebSocket() {
   }
 }
 
-// 6.1 開關檔案管理器彈出視窗 (修改為 Modal 視窗形式，保證絕對可見性)
+// 6.1 開關檔案管理器彈出視窗
 function toggleSftpModal() {
   const modal = document.getElementById('sftp-modal');
   sftpModalOpen = !sftpModalOpen;
@@ -1801,12 +1824,14 @@ function sftpGoUp() {
   refreshSftpList();
 }
 
+// 檔案下載要求
 function sftpDownloadFile(filename) {
   if (!sftpWs || sftpWs.readyState !== WebSocket.OPEN) return;
   const targetPath = sftpCurrentPath === '/' ? `/${filename}` : `${sftpCurrentPath}/${filename}`;
   sftpWs.send(JSON.stringify({ action: 'download_start', path: targetPath }));
 }
 
+// 刪除遠端對象
 function sftpDeleteFile(filename, isDir) {
   if (!sftpWs || sftpWs.readyState !== WebSocket.OPEN) return;
   const typeStr = isDir ? '資料夾' : '檔案';
@@ -1816,6 +1841,7 @@ function sftpDeleteFile(filename, isDir) {
   sftpWs.send(JSON.stringify({ action: 'delete', path: targetPath, isDir }));
 }
 
+// 檔案上傳
 function handleSftpUpload(connectionId, file) {
   if (!sftpWs || sftpWs.readyState !== WebSocket.OPEN) {
     alert('SFTP 安全通道尚未就緒，請重試。');
@@ -1843,6 +1869,7 @@ function handleSftpUpload(connectionId, file) {
   sftpWs.send(JSON.stringify({ action: 'upload_start', filename: file.name, path: targetPath }));
 }
 
+// 發送下一個上傳區塊
 function sendNextUploadChunk() {
   const nextSize = Math.min(uploadChunkSize, uploadFile.size - uploadOffset);
   const slice = uploadFile.slice(uploadOffset, uploadOffset + nextSize);
@@ -1856,6 +1883,7 @@ function sendNextUploadChunk() {
   reader.readAsArrayBuffer(slice);
 }
 
+// 處理上傳 Ack
 function handleUploadAck(written) {
   if (sftpUploadCancelled) return;
   uploadOffset += written;
@@ -1872,7 +1900,6 @@ function handleUploadAck(written) {
   if (uploadOffset < uploadFile.size) {
     sendNextUploadChunk();
   } else {
-    // 完成上傳
     sftpWs.send(JSON.stringify({ action: 'upload_end' }));
   }
 }
@@ -2034,7 +2061,7 @@ function runSelectedScript(selectElement) {
 }
 
 // ==========================================
-// 🔑 內建安全 SSH ED25519 密鑰對生成器
+// 🔑 內建安全 SSH 密鑰對生成器 (修復未定義調用錯誤)
 // ==========================================
 async function generateSshKey() {
   const btn = event ? event.target : null;
@@ -2121,7 +2148,7 @@ async function generateSshKey() {
   }
 }
 
-// 🆕 新增：RSA JWK 轉 OpenSSH ssh-rsa 格式序列化器 (型別安全)
+// RSA JWK 轉 OpenSSH ssh-rsa 格式序列化器 (型別安全)
 function formatOpenSshRsa(jwk) {
   const encoder = new TextEncoder();
   const typeBytes = encoder.encode("ssh-rsa");
@@ -2129,7 +2156,6 @@ function formatOpenSshRsa(jwk) {
   const eBytes = base64urlToBytes(jwk.e);
   let nBytes = base64urlToBytes(jwk.n);
   
-  // OpenSSH 規定：如果 modulus (n) 最高位為 1，必須補 0x00 防範被判讀為負數 (MPInt 格式)
   if (nBytes[0] & 0x80) {
     const tmp = new Uint8Array(nBytes.length + 1);
     tmp.set(nBytes, 1);
@@ -2150,7 +2176,7 @@ function formatOpenSshRsa(jwk) {
   return `ssh-rsa ${b64} cf-webssh-keygen`;
 }
 
-// 🆕 新增：ECDSA JWK 轉 OpenSSH ecdsa-sha2-nistp256 格式序列化器 (型別安全)
+// ECDSA JWK 轉 OpenSSH ecdsa-sha2-nistp256 格式序列化器 (型別安全)
 function formatOpenSshEcdsa(jwk) {
   const encoder = new TextEncoder();
   const typeBytes = encoder.encode("ecdsa-sha2-nistp256");
@@ -2159,7 +2185,6 @@ function formatOpenSshEcdsa(jwk) {
   const xBytes = base64urlToBytes(jwk.x);
   const yBytes = base64urlToBytes(jwk.y);
   
-  // Uncompressed EC point Q 格式：0x04 標頭 + 32-byte x + 32-byte y (合計 65 位元組)
   const qBytes = new Uint8Array(65);
   qBytes[0] = 0x04;
   qBytes.set(xBytes, 1);
@@ -2179,7 +2204,7 @@ function formatOpenSshEcdsa(jwk) {
   return `ecdsa-sha2-nistp256 ${b64} cf-webssh-keygen`;
 }
 
-// 🆕 新增：Base64URL 轉 Uint8Array 輔助器 (含自動 '=' 補齊)
+// Base64URL 轉 Uint8Array 輔助器 (含自動 '=' 補齊)
 function base64urlToBytes(b64url) {
   const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
   const padded = b64.padEnd(b64.length + (4 - b64.length % 4) % 4, '=');
@@ -2191,7 +2216,7 @@ function base64urlToBytes(b64url) {
   return bytes;
 }
 
-// 🆕 新增：長度前綴寫入器
+// 長度前綴寫入器
 function writeLengthPrefixed(bytes) {
   const len = bytes.byteLength;
   const lenBytes = new Uint8Array(4);
@@ -2219,7 +2244,7 @@ function copyToClipboard(elementId) {
   alert('已成功複製到剪貼簿！');
 }
 
-// 7. 連線至 SSH 終端機
+// 連線至 SSH 終端機
 function connectSSH(id, name) {
   activeConnectionId = id; 
   document.getElementById('active-terminal-title').textContent = `連線至: ${name}`;
