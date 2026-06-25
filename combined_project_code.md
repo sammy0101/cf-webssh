@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Wed Jun 24 17:26:41 UTC 2026
+Generated on: Thu Jun 25 10:33:59 UTC 2026
 
 ## File: README.md
 ````md
@@ -211,7 +211,7 @@ async function encryptText(text, key) {
   );
   const ivB64 = arrayBufferToBase64(iv);
   const cipherB64 = arrayBufferToBase64(ciphertext);
-  return `${ivB64}:${cipherB64}`;
+  return `${ivB64}:${cipherB64}`; // 拼接儲存為 IV:密文 格式
 }
 
 // 解密字串 (具備極強的防禦性防護與對舊明文數值/字串的向下相容)
@@ -233,7 +233,7 @@ async function decryptText(encryptedStr, key) {
     );
     return new TextDecoder().decode(decrypted);
   } catch (err) {
-    console.error("解密失敗:", err);
+    console.error("安全解密失敗:", err);
     throw new Error("憑據解密失敗。");
   }
 }
@@ -536,7 +536,7 @@ export default {
       }
     }
 
-    // 3.6 API: 獲取常用腳本列表 (明文傳輸與儲存)
+    // 3.6 API: 獲取常用腳本列表 (相容性明文讀取模式)
     if (url.pathname === '/api/scripts' && request.method === 'GET') {
       try {
         const list = await env.WEBSSH_KV.list({ prefix: 'script:' });
@@ -577,7 +577,7 @@ export default {
       }
     }
 
-    // 3.7 API: 儲存常用腳本 (明文儲存，不加解密)
+    // 3.7 API: 儲存常用腳本 (配合用戶要求：腳本內容以安全明文直接儲存)
     if (url.pathname === '/api/scripts' && request.method === 'POST') {
       try {
         const data = await request.json();
@@ -640,7 +640,6 @@ export default {
 
       const config = JSON.parse(connectionVal);
       
-      // 解密全部連線主機配置
       let finalHost = config.host || '';
       let finalPort = config.port || 22;
       let finalUsername = config.username || '';
@@ -976,6 +975,28 @@ export default {
             if (downloadStream) {
               downloadStream.resume();
             }
+          }
+
+          // 🆕 新增行動一：SFTP 線上遠端檔案「讀取」指令支援
+          else if (msg.action === 'file_read') {
+            sftpClient.readFile(msg.path, 'utf8', (err, data) => {
+              if (err) {
+                server.send(JSON.stringify({ status: 'error', message: `讀取遠端檔案失敗: ${err.message}` }));
+                return;
+              }
+              server.send(JSON.stringify({ status: 'file_read_ok', path: msg.path, content: data }));
+            });
+          }
+
+          // 🆕 新增行動二：SFTP 線上遠端檔案「儲存寫入」指令支援
+          else if (msg.action === 'file_write') {
+            sftpClient.writeFile(msg.path, msg.content, 'utf8', (err) => {
+              if (err) {
+                server.send(JSON.stringify({ status: 'error', message: `寫入遠端檔案失敗: ${err.message}` }));
+                return;
+              }
+              server.send(JSON.stringify({ status: 'file_write_ok', path: msg.path }));
+            });
           }
 
         } catch (e) {
