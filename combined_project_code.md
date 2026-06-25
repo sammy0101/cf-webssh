@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Thu Jun 25 10:47:33 UTC 2026
+Generated on: Thu Jun 25 10:53:03 UTC 2026
 
 ## File: README.md
 ````md
@@ -2219,6 +2219,10 @@ function closeTerminal() {
         <button id="logout-btn" onclick="handleLogout()" class="hidden bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded font-medium transition text-sm">
           登出
         </button>
+        <!-- 獨立 SSH 密鑰生成器觸發按鈕 (新增) -->
+        <button onclick="showKeygenModal()" class="bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 px-4 py-2 rounded font-medium transition text-sm">
+          🔑 密鑰生成
+        </button>
         <!-- 腳本管理按鈕 -->
         <button onclick="showScriptsModal()" class="bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 px-4 py-2 rounded font-medium transition text-sm">
           📜 常用腳本
@@ -2311,38 +2315,12 @@ function closeTerminal() {
 
   <!-- 常用腳本管理 Modal -->
   <div id="scripts-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-40">
-    <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-xl h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-xl h-[70vh] flex flex-col shadow-2xl overflow-hidden">
       <div class="pb-3 border-b border-slate-800 flex justify-between items-center bg-slate-900">
         <h2 class="text-xl font-bold text-emerald-400">📜 常用腳本管理</h2>
         <button onclick="hideScriptsModal()" class="text-slate-400 hover:text-white text-sm font-bold p-1">
           關閉 ✕
         </button>
-      </div>
-      
-      <!-- SSH 密鑰生成器 -->
-      <div class="py-4 border-b border-slate-800">
-        <div class="flex justify-between items-center mb-3">
-          <h3 class="text-sm font-bold text-slate-300">🔑 內建安全 SSH 密鑰生成器</h3>
-          <button onclick="generateSshKey()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded text-xs font-semibold transition">
-            一鍵生成 ED25519 密鑰對
-          </button>
-        </div>
-        <div id="key-gen-result" class="hidden space-y-3 mt-3">
-          <div>
-            <div class="flex justify-between items-center mb-1">
-              <label class="text-[10px] text-slate-400">公鑰 (Public Key) - 請追加至遠端 VPS <code>~/.ssh/authorized_keys</code></label>
-              <button onclick="copyToClipboard('keygen-pubkey')" class="text-[10px] text-emerald-400 hover:underline font-bold">複製</button>
-            </div>
-            <textarea id="keygen-pubkey" readonly rows="2" class="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-[10px] font-mono text-slate-300 select-all focus:outline-none"></textarea>
-          </div>
-          <div>
-            <div class="flex justify-between items-center mb-1">
-              <label class="text-[10px] text-slate-400">私鑰 (Private Key - PEM 格式) - 請妥善儲存或直接用於主機連線配置</label>
-              <button onclick="copyToClipboard('keygen-privkey')" class="text-[10px] text-emerald-400 hover:underline font-bold">複製</button>
-            </div>
-            <textarea id="keygen-privkey" readonly rows="4" class="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-[9px] font-mono text-slate-300 select-all focus:outline-none"></textarea>
-          </div>
-        </div>
       </div>
 
       <!-- 新增腳本表單 -->
@@ -2365,6 +2343,47 @@ function closeTerminal() {
       <!-- 腳本列表區 -->
       <div id="scripts-list" class="flex-1 overflow-y-auto pt-4 space-y-2 text-xs">
         <!-- 動態渲染常用腳本清單 -->
+      </div>
+    </div>
+  </div>
+
+  <!-- SSH 獨立密鑰生成器 Modal (新增：獨立成乾淨且易讀的大字體彈窗) -->
+  <div id="keygen-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-40">
+    <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-2xl shadow-2xl flex flex-col animate-fade-in">
+      <div class="pb-3 border-b border-slate-800 flex justify-between items-center bg-slate-900 mb-4">
+        <h2 class="text-xl font-bold text-emerald-400 flex items-center gap-1.5">
+          🔑 SSH 密鑰生成器
+        </h2>
+        <button onclick="hideKeygenModal()" class="text-slate-400 hover:text-white text-sm font-bold p-1">
+          關閉 ✕
+        </button>
+      </div>
+      
+      <div class="space-y-4">
+        <div class="flex justify-between items-center flex-wrap gap-2">
+          <p class="text-sm text-slate-400">在本地瀏覽器中原生物理生成高強度的安全 ED25519 密鑰：</p>
+          <button onclick="generateSshKey()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded text-xs font-bold transition">
+            一鍵生成 ED25519 密鑰
+          </button>
+        </div>
+        
+        <!-- 密鑰生成結果提示區 (修改：優化為 text-xs 字體與更醒目的 leading-relaxed 行高與對比度) -->
+        <div id="key-gen-result" class="hidden space-y-4">
+          <div>
+            <div class="flex justify-between items-center mb-1.5">
+              <label class="text-xs text-slate-300 font-semibold">公鑰 (Public Key) - 請追加至遠端 VPS <code>~/.ssh/authorized_keys</code></label>
+              <button onclick="copyToClipboard('keygen-pubkey')" class="text-xs text-emerald-400 hover:text-emerald-300 hover:underline font-bold">複製公鑰</button>
+            </div>
+            <textarea id="keygen-pubkey" readonly rows="3" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs font-mono text-slate-200 select-all focus:outline-none leading-relaxed" spellcheck="false"></textarea>
+          </div>
+          <div>
+            <div class="flex justify-between items-center mb-1.5">
+              <label class="text-xs text-slate-300 font-semibold">私鑰 (Private Key - PEM 格式) - 請妥善儲存或直接用於主機連線配置</label>
+              <button onclick="copyToClipboard('keygen-privkey')" class="text-xs text-emerald-400 hover:text-emerald-300 hover:underline font-bold">複製私鑰</button>
+            </div>
+            <textarea id="keygen-privkey" readonly rows="8" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs font-mono text-slate-200 select-all focus:outline-none leading-relaxed" spellcheck="false"></textarea>
+          </div>
+        </div>
       </div>
     </div>
   </div>
