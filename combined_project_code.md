@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Thu Jun 25 13:33:31 UTC 2026
+Generated on: Thu Jun 25 13:37:30 UTC 2026
 
 ## File: README.md
 ````md
@@ -359,7 +359,7 @@ import { deriveKey, encryptText, decryptText, hashPassword, getExpectedToken } f
 import { handleSSHUpgrade } from './ssh.js';
 import { handleSFTPUpgrade } from './sftp.js';
 
-// 🆕 __APP_VERSION__ 會在編譯階段被 esbuild 動態替換為實體版本字串 (修改處)
+// __APP_VERSION__ 會在編譯階段被 esbuild 動態替換為 package.json 的實體版本字串
 const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.0';
 
 export default {
@@ -397,7 +397,9 @@ export default {
 
     // 1. 靜態網頁分發
     if (url.pathname === '/' || url.pathname === '/index.html') {
-      return new Response(htmlContent, {
+      // 🆕 透過動態注入版本查詢字串（Cache Busting）強制瀏覽器立刻載入最新前端代碼，防止載入快取舊檔 (修改處)
+      const parsedHtml = htmlContent.replace('/app.js', `/app.js?v=${APP_VERSION}`);
+      return new Response(parsedHtml, {
         headers: { 'Content-Type': 'text/html; charset=utf-8' },
       });
     }
@@ -409,7 +411,7 @@ export default {
       });
     }
 
-    // 1.2 API: 檢查當前驗證狀態 (🆕 多返回編譯期注入的版本號) (修改處)
+    // 1.2 API: 檢查當前驗證狀態
     if (url.pathname === '/api/auth-check' && request.method === 'GET') {
       const authorized = await isAuthorized();
       return new Response(JSON.stringify({
