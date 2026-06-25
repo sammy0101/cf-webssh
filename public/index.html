@@ -34,7 +34,7 @@
         <button id="logout-btn" onclick="handleLogout()" class="hidden bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded font-medium transition text-sm">
           登出
         </button>
-        <!-- 獨立 SSH 密鑰生成器觸發按鈕 (已重新補回) -->
+        <!-- 獨立 SSH 密鑰生成器觸發按鈕 -->
         <button onclick="showKeygenModal()" class="bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 px-4 py-2 rounded font-medium transition text-sm">
           🔑 密鑰生成
         </button>
@@ -166,7 +166,7 @@
     </div>
   </div>
 
-  <!-- SSH 獨立密鑰生成器 Modal (已重新完整還原並補回) -->
+  <!-- SSH 獨立密鑰生成器 Modal (優化呼叫 generateSshKey 傳參) -->
   <div id="keygen-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-40">
     <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-2xl h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-fade-in">
       <div class="pb-3 border-b border-slate-800 flex justify-between items-center bg-slate-900 mb-4">
@@ -190,7 +190,8 @@
               <option value="ecdsa">ECDSA P-256 (橢圓曲線)</option>
             </select>
           </div>
-          <button onclick="generateSshKey()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-1.5 rounded text-xs font-bold transition">
+          <!-- 優化：顯式向下傳遞 event 物件 -->
+          <button onclick="generateSshKey(event)" class="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-1.5 rounded text-xs font-bold transition">
             一鍵生成安全密鑰
           </button>
         </div>
