@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Thu Jun 25 13:47:17 UTC 2026
+Generated on: Thu Jun 25 14:00:28 UTC 2026
 
 ## File: README.md
 ````md
@@ -452,7 +452,7 @@ export default {
     if (url.pathname === '/api/logout' && request.method === 'POST') {
       return new Response(JSON.stringify({ success: true }), {
         headers: {
-          'Content-Type': 'application/javascript',
+          'Content-Type': 'application/json',
           'Set-Cookie': 'webssh_token=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0'
         }
       });
