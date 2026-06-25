@@ -8,11 +8,12 @@ let sftpCurrentPath = '.';       // 當前檔案管理器絕對路徑
 let sftpModalOpen = false;       // 檔案管理器彈窗開關狀態 (改為 Modal)
 let sftpFileChunks = [];         // 用於下載儲存二進位區塊
 let currentDownloadingFilename = ''; // 當前正在下載的檔名
-let uploadFile = null;           // 當前正在上傳的 File 物件
+let uploadFile = null;           // 當前正在上傳 the File 物件
 let uploadOffset = 0;            // 上傳目前偏移行數
 const uploadChunkSize = 64 * 1024; // 上傳分塊大小
 let dragSourceEl = null;         // 拖拽源物件
 let savedScripts = [];           // 全局快取腳本列表
+let sftpModalModalOpen = false;  // 前端用來檢測 SFTP 是否已打開的變數
 let editingFilePath = '';        // 當前編輯中的遠端純文字路徑
 
 // 啟動入口
@@ -363,6 +364,7 @@ function initDragAndDrop(connectionId) {
     const files = dt.files;
 
     if (files && files.length > 0) {
+      // 判斷 SFTP 通道是否就緒，若未就緒自動打開面板建立通道並上傳
       if (!sftpWs || sftpWs.readyState !== WebSocket.OPEN) {
         toggleSftpModal();
         setTimeout(() => {
@@ -406,6 +408,7 @@ function connectSftpWebSocket() {
   };
 
   sftpWs.onmessage = async (event) => {
+    // I. 處理檔案下載的二進位區塊 (Chunk)
     if (event.data instanceof ArrayBuffer) {
       sftpFileChunks.push(event.data);
       sftpWs.send(JSON.stringify({ action: 'download_next' }));
@@ -416,6 +419,7 @@ function connectSftpWebSocket() {
       return;
     }
 
+    // II. 處理 JSON 格式控制回饋指令
     try {
       const msg = JSON.parse(event.data);
 
@@ -863,6 +867,7 @@ function hideScriptsModal() {
   document.getElementById('scripts-modal').classList.remove('flex');
 }
 
+// 儲存常用腳本 (採用前端樂觀更新 Optimistic Update 模式)
 async function saveScript(event) {
   event.preventDefault();
   const nameEl = document.getElementById('script-name');
@@ -901,6 +906,7 @@ async function saveScript(event) {
   }
 }
 
+// 刪除常用腳本 (採用前端樂觀更新 Optimistic Update 模式)
 async function deleteScript(id) {
   if (!confirm('確定要刪除此常用腳本嗎？')) return;
 
@@ -975,7 +981,7 @@ async function generateSshKey() {
   } finally {
     if (btn) {
       btn.disabled = false;
-      btn.textContent = '一鍵生成 ED25519 密鑰對';
+      btn.textContent = '一鍵生成 ED25519 密鑰';
     }
   }
 }
@@ -1080,4 +1086,18 @@ function closeTerminal() {
   }
   document.getElementById('terminal-screen').classList.add('hidden');
   document.getElementById('terminal-screen').classList.remove('flex');
+}
+
+// 🆕 新增：開關金鑰生成器彈窗 (相容性新增)
+function showKeygenModal() {
+  document.getElementById('key-gen-result').classList.add('hidden');
+  document.getElementById('keygen-pubkey').value = '';
+  document.getElementById('keygen-privkey').value = '';
+  document.getElementById('keygen-modal').classList.remove('hidden');
+  document.getElementById('keygen-modal').classList.add('flex');
+}
+
+function hideKeygenModal() {
+  document.getElementById('keygen-modal').classList.add('hidden');
+  document.getElementById('keygen-modal').classList.remove('flex');
 }
