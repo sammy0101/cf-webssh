@@ -1,15 +1,17 @@
 # cf-webssh
 
-一個基於 Cloudflare Workers 平台構建的輕量級、模組化 WebSSH 終端與 SFTP 遠端檔案管理工作台。
+一個基於 Cloudflare Workers 平台建置的輕量級、高度安全、完全模組化解耦的互動式 WebSSH 終端機與 SFTP 遠端檔案管理工作台。
 
-本專案利用 Cloudflare 原生 TCP 接口（透過相容性標誌 `nodejs_compat` 啟用 `cloudflare:sockets`）與遠端主機建立安全的 SSH 通道，並在瀏覽器前端提供高互動性的終端體驗（`xterm.js`）、視覺化 SFTP 檔案管理器、遠端檔案線上編輯器，以及本地安全密鑰生成器。
+本專案利用 Cloudflare 原生 TCP 接口（透過相容性標誌 `nodejs_compat` 啟用 `cloudflare:sockets`）與遠端主機建立安全的 SSH 通道，並在瀏覽器前端使用 `xterm.js` 提供互動性終端、視覺化 SFTP 檔案管理器、遠端檔案線上編輯器，以及本地安全密鑰生成器。
 
 ## 🎯 專案特點
 
 - **無伺服器架構**：完全依賴 Cloudflare Workers 邊緣網路，無需部署與維護傳統的 WebSSH 後端伺服器（如 Bastion、Guacamole 等）。
-- **模組化與解耦設計（全新）**：
-  - 本地開發完全解耦為獨立檔案：安全加密（`crypto.js`）、終端通訊（`ssh.js`）、SFTP 管理（`sftp.js`）、主入口（`index.js`），以及前端 HTML 骨架與前端控制腳本（`app.js`）。
-  - **高效打包**：利用 `build.mjs` 中自訂的 `clientJsLoaderPlugin` 解析器，在編譯時將前端代碼以靜態字串自動打包併入單一的 Workers 部署檔中，在維持本地開發高維護性的同時，保有單一 Workers 部署的高效能。
+- **解耦與模組化分檔管理**：
+  - 本地開發專案採用高維護性分檔結構：安全加密（`crypto.js`）、終端通訊（`ssh.js`）、SFTP 管理（`sftp.js`）、主路由入口（`index.js`），以及前端頁面（`index.html`）與核心控制指令碼（`app.js`）。
+  - **極速載入**：在構建編譯時（`build.mjs`），透過自訂的 esbuild 插件，自動將前端 JavaScript 程式碼轉化為靜態字串併入 Worker 的部署檔中，使您的專案既具有本地開發的整潔度，又擁有極佳的邊緣端載入速度。
+- **動態版本號同步**：
+  - 主畫面標題旁與登入介面會自動展示當前的系統版本號（例如 `v2.0.0`），該版本號完全由構建指令碼在打包編譯時，自動、動態地與 `package.json` 內的 `"version"` 欄位進行實時同步。
 - **全庫零知識（Zero-Knowledge）端到端對稱加密**：
   - 當設定管理員密碼（環境變數 `ADMIN_PASSWORD`）時，系統會自動在 Worker 記憶體中利用您的密碼雜湊衍生出 256 位元的對稱金鑰。
   - 主機連線欄位（包括主機 IP/域名、主機名稱、端口、使用者名稱、連線密碼與私鑰）在寫入 Cloudflare KV 前，**皆全數透過原生 WebCrypto API 執行強度的 AES-GCM-256 對稱加密**。
@@ -17,16 +19,16 @@
   - **向下相容**：系統具備智慧判定，若偵測到未加密的舊有資料會自動以明文格式讀取，不影響您原先已儲存的配置。您只需在網頁上對舊主機點選「編輯 -> 儲存」，系統便會自動將其無損升級為加密狀態。
 - **一體化 SFTP 遠端檔案管理器**：
   - 前端頂部整合為單一 **「📁 SFTP 檔案管理」** 彈窗視窗，可直接在終端機畫面上方彈出，體驗一體化。
-  - **📝 遠端檔案線上編輯器（全新）**：點選文字格式檔案（如 `.conf`、`.sh`、`.env`、`.json`、`.yml` 等）旁的 **「編輯」** 按鈕，右側會直接拉出一個大面積的代碼編輯器彈窗，修改後點擊「儲存變更」即可即時覆寫寫入 VPS，免去使用終端機 `vim` / `nano` 的繁瑣步驟。
+  - **📝 遠端檔案線上編輯器**：點選文字格式檔案（如 `.conf`、`.sh`、`.env`、`.json`、`.yml` 等）旁的 **「編輯」** 按鈕，右側會直接拉出一個大面積的代碼編輯器彈窗，修改後點擊「儲存變更」即可即時覆寫寫入 VPS，免去使用終端機 `vim` / `nano` 的繁瑣步驟。
   - **「類 Windows」麵包屑導航**：自動將目前的絕對路徑分割為可點選的級聯節點（如 `🏠 / root / apps`），點選即可快速跨目錄跳轉。
   - **檔案瀏覽與導航**：點選資料夾可直接進入，支援目錄深層導航、向上返回與重新整理。
-  - **檔案下載與完整性流控制（Backpressure）**：採用 Web 串流控制，發送一塊數據確認一塊，絕不撐爆 Worker 記憶體，支援超大檔案的安全流式下載。
+  - **檔案下載與完整性流控制（Backpressure）**：採用 Web 串流控制，發送一塊數據確認一塊，絕不撐爆 Worker 記憶體，支援大檔案的安全流式下載。
   - **拖放與手動上傳**：支援將電腦檔案直接拖曳至終端機畫面上傳，或點選視窗內的「上傳檔案」手動選取，自動上傳至目前瀏覽的目錄中。
   - **檔案刪除**：支援一鍵永久刪除遠端 VPS 上的檔案或空資料夾。
-- **內建多算法安全 SSH 密鑰生成器（全新）**：
+- **內建多算法安全 SSH 密鑰生成器**：
   - 主畫面 Header 新增獨立的 **「🔑 密鑰生成」** 彈窗。完全由瀏覽器端 WebCrypto 引擎本地生成，保證極限物理安全。
   - **支援四種主流算法**：`ED25519` (高安全、推薦)、`RSA-2048` (高相容)、`RSA-4096` (極高安全)、`ECDSA P-256` (橢圓曲線)。
-  - **標準公鑰序列化編譯**：內建 OpenSSH 公鑰字節序列化解析器，自動將 DER 編碼編譯成可以直接寫入 Linux `authorized_keys` 的標準 `ssh-rsa` 或 `ecdsa-sha2-nistp256` 等明文字串，一鍵複製使用。
+  - **標準 OpenSSH 公鑰序列化編譯**：內建 OpenSSH 公鑰字節序列化解析器，自動將 DER 編碼編譯成可以直接寫入 Linux `authorized_keys` 的標準 `ssh-rsa`、`ecdsa-sha2-nistp256` 或 `ssh-ed25519` 等明文字串，一鍵複製使用。
 - **自訂一鍵常用腳本與即時注入**：
   - 主畫面新增 **「📜 常用腳本」** 管理彈窗，提供視覺化新增與刪除自訂腳本（如系統更新、Docker 狀態檢視等）。
   - **一鍵終端機注入**：當您在 SSH 連線中，點擊頂部 **「📜 常用腳本...」** 下拉選單，對應的指令將即時輸入到您的終端中並自動送出執行。
@@ -43,6 +45,9 @@
 - **優化的 xterm.js 終端**：
   - **自動聚焦 (Auto Focus)**：連線載入完成後自動鎖定焦點，無需手動用滑鼠點擊即可直接開始打字輸入。
   - **視窗尺寸動態同步**：支援瀏覽器視窗縮放時，自動向遠端虛擬終端（Pseudo-terminal, PTY）發送 `resize` 訊號。
+- **Cloudflare Workers 專屬相容性適配**：
+  - 針對 Workers 執行環境底層 BoringSSL 在計算 **X25519 DH 共享金鑰** 時的限制，主動排除 `curve25519` 相關的金鑰交換演算法（KEX），改用 NIST 標準曲線（如 `ecdh-sha2-nistp256`）或有限域 Diffie-Hellman 演算法進行握手。
+  - 針對 Workers 的 `node:crypto` 串流解密不完整支援 AEAD 模式（如 `chacha20-poly1305`、`aes-gcm`）而會拋出 `No auth tag provided` 的限制，主動在握手階段限制僅協商使用 **CTR 計數器模式** 與 **CBC 模式**（如 `aes256-ctr`），配合獨立的 HMAC 校驗（如 `hmac-sha2-256`），確保資料傳輸穩定不中斷。
 
 ## 📁 專案目錄結構
 
@@ -50,17 +55,17 @@
 cf-webssh/
 ├── wrangler.toml              # Cloudflare Wrangler 配置文件
 ├── package.json               # 項目與套件依賴配置
-├── build.mjs                  # esbuild 自訂構建與打包指令碼 (含解耦插件)
+├── build.mjs                  # esbuild 自訂構建與打包指令碼 (含解耦與自動版號注入插件)
 ├── mocks/
 │   └── cpu-features.js        # cpu-features 機制模擬器
 ├── public/
 │   ├── index.html             # 前台純淨 HTML 排版模版
-│   └── app.js                 # 🆕 獨立的前台 JavaScript 核心控制器
+│   └── app.js                 # 獨立的前台 JavaScript 核心控制器
 └── src/
-    ├── crypto.js              # 🆕 獨立的對稱加密模組 (AES-GCM-256)
-    ├── ssh.js                 # 🆕 獨立的 SSH 終端通訊模組
-    ├── sftp.js                # 🆕 獨立的 SFTP 管理通訊模組
-    └── index.js               # 🆕 後端主路由與分發器 (精簡解耦)
+    ├── crypto.js              # 獨立的對稱加密模組 (AES-GCM-256)
+    ├── ssh.js                 # 獨立的 SSH 終端通訊模組
+    ├── sftp.js                # 獨立的 SFTP 管理通訊模組
+    └── index.js               # 主入口路由分發與資產服務器
 ```
 
 ## ⚙️ 系統需求
@@ -74,7 +79,7 @@ cf-webssh/
 
 本專案已內建完整的 CI/CD 自動化工作流。當您將專案推送到 GitHub 的 `main` 分支時，系統將會**全自動處理 KV 命名空間**：
 
-1. **Fork 本項目**。
+1. **fork 本項目**。
 2. 在 GitHub 專案的 `Settings -> Secrets and variables -> Actions` 中，新增一個名為 `CLOUDFLARE_API_TOKEN` 的 Secret（此 Token 需具備編輯 Workers 與 KV 命名空間的權限）。
 3. 將代碼推送至 `main` 分支。
 4. GitHub Actions 工作流（`.github/workflows/deploy.yml`）會自動偵測您的 Cloudflare 帳戶中是否已存在 `WEBSSH_KV` 命名空間。若不存在，將自動為您建立，並**自動動態填入** `wrangler.toml` 中的 `KV_NAMESPACE_ID_PLACEHOLDER`，最後完成編譯與部署。您無需進行任何手動文件修改。
@@ -164,7 +169,7 @@ cf-webssh/
 當您打開 Cloudflare Workers 網頁控制台的 **「Quick Edit（快速編輯）」** 線上代碼編輯器時，可能會在 `index.js`（即上傳的打包檔，約 22,000 行）看見數百個紅色或黃色的型別錯誤提示（例如：`Cannot find name 'Buffer'` 或 `Property 'performance' does not exist`）。
 
 * **原因**：控制台網頁編輯器底層使用的是簡化版的 Monaco 靜態檢查器。當它嘗試型別分析這份包含了 `ssh2` 與 Node.js 相容層（Polyfills）的超大型編譯產物時，會因為看不懂 Node.js 原生 API 而報錯。
-* **解決與影響**：這**完全不影響代碼的實際運行**，僅僅是線上編輯器前端的顯示干擾。本專案已在編譯腳本 `build.mjs` 中自動將 `// @ts-nocheck` 寫入檔案頂端。如果您在網頁編輯器中仍看見紅字，請**手動重新整理網頁編輯器分頁 (Ctrl + F5)** 以清除瀏覽器的檔案快取，紅字與驚嘆號便會隨之清除。
+* **解決與影響**：這**完全不影響代碼的實際運行**，僅僅是線上編輯器前端的顯示充擾。本專案已在編譯腳本 `build.mjs` 中自動將 `// @ts-nocheck` 寫入檔案頂端。如果您在網頁編輯器中仍看見紅字，請**手動重新整理網頁編輯器分頁 (Ctrl + F5)** 以清除瀏覽器的檔案快取，紅字與驚嘆號便會隨之清除。
 
 ## 🔒 安全性建議
 
