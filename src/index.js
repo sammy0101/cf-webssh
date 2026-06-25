@@ -1,8 +1,11 @@
 import htmlContent from '../public/index.html';
-import appJs from 'client-js:../public/app.js'; // 透過自訂 esbuild 插件，靜態解耦載入前端核心
+import appJs from 'client-js:../public/app.js'; 
 import { deriveKey, encryptText, decryptText, hashPassword, getExpectedToken } from './crypto.js';
 import { handleSSHUpgrade } from './ssh.js';
 import { handleSFTPUpgrade } from './sftp.js';
+
+// 🆕 __APP_VERSION__ 會在編譯階段被 esbuild 動態替換為實體版本字串 (修改處)
+const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.0';
 
 export default {
   async fetch(request, env, ctx) {
@@ -51,12 +54,13 @@ export default {
       });
     }
 
-    // 1.2 API: 檢查當前驗證狀態
+    // 1.2 API: 檢查當前驗證狀態 (🆕 多返回編譯期注入的版本號) (修改處)
     if (url.pathname === '/api/auth-check' && request.method === 'GET') {
       const authorized = await isAuthorized();
       return new Response(JSON.stringify({
         required: isAuthEnabled,
-        authenticated: authorized
+        authenticated: authorized,
+        version: APP_VERSION // 傳遞版本號給前端
       }), {
         headers: { 'Content-Type': 'application/json' }
       });
