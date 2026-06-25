@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Thu Jun 25 11:10:19 UTC 2026
+Generated on: Thu Jun 25 13:17:11 UTC 2026
 
 ## File: README.md
 ````md
@@ -2752,7 +2752,7 @@ export default mock;
 ````json
 {
   "name": "cf-webssh",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
