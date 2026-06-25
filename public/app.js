@@ -8,7 +8,7 @@ let sftpCurrentPath = '.';       // 當前檔案管理器絕對路徑
 let sftpModalOpen = false;       // 檔案管理器彈窗開關狀態 (改為 Modal)
 let sftpFileChunks = [];         // 用於下載儲存二進位區塊
 let currentDownloadingFilename = ''; // 當前正在下載的檔名
-let uploadFile = null;           // 當前正在上傳 the File 物件
+let uploadFile = null;           // 當前正在上傳的 File 物件
 let uploadOffset = 0;            // 上傳目前偏移行數
 const uploadChunkSize = 64 * 1024; // 上傳分塊大小
 let dragSourceEl = null;         // 拖拽源物件
@@ -364,7 +364,6 @@ function initDragAndDrop(connectionId) {
     const files = dt.files;
 
     if (files && files.length > 0) {
-      // 判斷 SFTP 通道是否就緒，若未就緒自動打開面板建立通道並上傳
       if (!sftpWs || sftpWs.readyState !== WebSocket.OPEN) {
         toggleSftpModal();
         setTimeout(() => {
@@ -408,7 +407,6 @@ function connectSftpWebSocket() {
   };
 
   sftpWs.onmessage = async (event) => {
-    // I. 處理檔案下載的二進位區塊 (Chunk)
     if (event.data instanceof ArrayBuffer) {
       sftpFileChunks.push(event.data);
       sftpWs.send(JSON.stringify({ action: 'download_next' }));
@@ -419,7 +417,6 @@ function connectSftpWebSocket() {
       return;
     }
 
-    // II. 處理 JSON 格式控制回饋指令
     try {
       const msg = JSON.parse(event.data);
 
@@ -776,6 +773,7 @@ function handleUploadAck(written) {
   if (uploadOffset < uploadFile.size) {
     sendNextUploadChunk();
   } else {
+    // 完成上傳
     sftpWs.send(JSON.stringify({ action: 'upload_end' }));
   }
 }
@@ -946,34 +944,72 @@ async function generateSshKey() {
     btn.textContent = '密鑰生成與編譯中...';
   }
 
+  const algo = document.getElementById('keygen-algorithm-select').value;
+  
   try {
-    const keyPair = await window.crypto.subtle.generateKey(
-      { name: "Ed25519" },
-      true,
-      ["sign", "verify"]
-    );
+    let keyPair = null;
+    let pubPemStr = '';
+    let privPem = '';
 
-    const privDer = await window.crypto.subtle.exportKey("pkcs8", keyPair.privateKey);
-    const privPem = derToPem(privDer, "PRIVATE KEY");
+    if (algo === 'ed25519') {
+      keyPair = await window.crypto.subtle.generateKey(
+        { name: "Ed25519" },
+        true,
+        ["sign", "verify"]
+      );
+      const privDer = await window.crypto.subtle.exportKey("pkcs8", keyPair.privateKey);
+      privPem = derToPem(privDer, "PRIVATE KEY");
 
-    const pubDer = await window.crypto.subtle.exportKey("spki", keyPair.publicKey);
+      const pubDer = await window.crypto.subtle.exportKey("spki", keyPair.publicKey);
+      const derBytes = new Uint8Array(pubDer);
+      const rawPubKey = derBytes.slice(-32);
+      const sshPubKeyBytes = new Uint8Array(51);
+      sshPubKeyBytes[3] = 11;
+      const encoder = new TextEncoder();
+      sshPubKeyBytes.set(encoder.encode("ssh-ed25519"), 4);
+      sshPubKeyBytes[18] = 32;
+      sshPubKeyBytes.set(rawPubKey, 19);
+      const sshPubKeyB64 = btoa(String.fromCharCode(...sshPubKeyBytes));
+      pubPemStr = `ssh-ed25519 ${sshPubKeyB64} cf-webssh-keygen`;
+    } 
     
-    const derBytes = new Uint8Array(pubDer);
-    const rawPubKey = derBytes.slice(-32);
+    else if (algo === 'rsa-2048' || algo === 'rsa-4096') {
+      const size = algo === 'rsa-2048' ? 2048 : 4096;
+      keyPair = await window.crypto.subtle.generateKey(
+        {
+          name: "RSASSA-PKCS1-v1_5",
+          modulusLength: size,
+          publicExponent: new Uint8Array([1, 0, 1]),
+          hash: "SHA-256"
+        },
+        true,
+        ["sign", "verify"]
+      );
+      const privDer = await window.crypto.subtle.exportKey("pkcs8", keyPair.privateKey);
+      privPem = derToPem(privDer, "PRIVATE KEY");
+
+      const jwk = await window.crypto.subtle.exportKey("jwk", keyPair.publicKey);
+      pubPemStr = formatOpenSshRsa(jwk);
+    } 
     
-    const sshPubKeyBytes = new Uint8Array(51);
-    sshPubKeyBytes[3] = 11; 
-    const encoder = new TextEncoder();
-    sshPubKeyBytes.set(encoder.encode("ssh-ed25519"), 4); 
-    sshPubKeyBytes[18] = 32; 
-    sshPubKeyBytes.set(rawPubKey, 19); 
+    else if (algo === 'ecdsa') {
+      keyPair = await window.crypto.subtle.generateKey(
+        {
+          name: "ECDSA",
+          namedCurve: "P-256"
+        },
+        true,
+        ["sign", "verify"]
+      );
+      const privDer = await window.crypto.subtle.exportKey("pkcs8", keyPair.privateKey);
+      privPem = derToPem(privDer, "PRIVATE KEY");
 
-    const sshPubKeyB64 = btoa(String.fromCharCode(...sshPubKeyBytes));
-    const sshPubKeyStr = `ssh-ed25519 ${sshPubKeyB64} cf-webssh-keygen`;
+      const jwk = await window.crypto.subtle.exportKey("jwk", keyPair.publicKey);
+      pubPemStr = formatOpenSshEcdsa(jwk);
+    }
 
-    document.getElementById('keygen-pubkey').value = sshPubKeyStr;
+    document.getElementById('keygen-pubkey').value = pubPemStr;
     document.getElementById('keygen-privkey').value = privPem;
-
     document.getElementById('key-gen-result').classList.remove('hidden');
   } catch (err) {
     console.error("生成密鑰失敗:", err);
@@ -981,9 +1017,94 @@ async function generateSshKey() {
   } finally {
     if (btn) {
       btn.disabled = false;
-      btn.textContent = '一鍵生成 ED25519 密鑰';
+      btn.textContent = '一鍵生成安全密鑰';
     }
   }
+}
+
+// 🆕 新增：RSA JWK 轉 OpenSSH ssh-rsa 格式序列化器 (型別安全)
+function formatOpenSshRsa(jwk) {
+  const encoder = new TextEncoder();
+  const typeBytes = encoder.encode("ssh-rsa");
+  
+  const eBytes = base64urlToBytes(jwk.e);
+  let nBytes = base64urlToBytes(jwk.n);
+  
+  // OpenSSH 規定：如果 modulus (n) 最高位為 1，必須補 0x00 防範被判讀為負數 (MPInt 格式)
+  if (nBytes[0] & 0x80) {
+    const tmp = new Uint8Array(nBytes.length + 1);
+    tmp.set(nBytes, 1);
+    nBytes = tmp;
+  }
+  
+  const part1 = writeLengthPrefixed(typeBytes);
+  const part2 = writeLengthPrefixed(eBytes);
+  const part3 = writeLengthPrefixed(nBytes);
+  
+  const totalLen = part1.byteLength + part2.byteLength + part3.byteLength;
+  const combined = new Uint8Array(totalLen);
+  combined.set(part1, 0);
+  combined.set(part2, part1.byteLength);
+  combined.set(part3, part1.byteLength + part2.byteLength);
+  
+  const b64 = arrayBufferToBase64(combined);
+  return `ssh-rsa ${b64} cf-webssh-keygen`;
+}
+
+// 🆕 新增：ECDSA JWK 轉 OpenSSH ecdsa-sha2-nistp256 格式序列化器 (型別安全)
+function formatOpenSshEcdsa(jwk) {
+  const encoder = new TextEncoder();
+  const typeBytes = encoder.encode("ecdsa-sha2-nistp256");
+  const curveBytes = encoder.encode("nistp256");
+  
+  const xBytes = base64urlToBytes(jwk.x);
+  const yBytes = base64urlToBytes(jwk.y);
+  
+  // Uncompressed EC point Q 格式：0x04 標頭 + 32-byte x + 32-byte y (合計 65 位元組)
+  const qBytes = new Uint8Array(65);
+  qBytes[0] = 0x04;
+  qBytes.set(xBytes, 1);
+  qBytes.set(yBytes, 33);
+  
+  const part1 = writeLengthPrefixed(typeBytes);
+  const part2 = writeLengthPrefixed(curveBytes);
+  const part3 = writeLengthPrefixed(qBytes);
+  
+  const totalLen = part1.byteLength + part2.byteLength + part3.byteLength;
+  const combined = new Uint8Array(totalLen);
+  combined.set(part1, 0);
+  combined.set(part2, part1.byteLength);
+  combined.set(part3, part1.byteLength + part2.byteLength);
+  
+  const b64 = arrayBufferToBase64(combined);
+  return `ecdsa-sha2-nistp256 ${b64} cf-webssh-keygen`;
+}
+
+// 🆕 新增：Base64URL 轉 Uint8Array 輔助器 (含自動 '=' 補齊)
+function base64urlToBytes(b64url) {
+  const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = b64.padEnd(b64.length + (4 - b64.length % 4) % 4, '=');
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+// 🆕 新增：長度前綴寫入器
+function writeLengthPrefixed(bytes) {
+  const len = bytes.byteLength;
+  const lenBytes = new Uint8Array(4);
+  lenBytes[0] = (len >> 24) & 0xFF;
+  lenBytes[1] = (len >> 16) & 0xFF;
+  lenBytes[2] = (len >> 8) & 0xFF;
+  lenBytes[3] = len & 0xFF;
+  
+  const combined = new Uint8Array(4 + len);
+  combined.set(lenBytes, 0);
+  combined.set(bytes, 4);
+  return combined;
 }
 
 function derToPem(derBuffer, label) {
@@ -1088,7 +1209,7 @@ function closeTerminal() {
   document.getElementById('terminal-screen').classList.remove('flex');
 }
 
-// 🆕 新增：開關金鑰生成器彈窗 (相容性新增)
+// 開關金鑰生成器彈窗
 function showKeygenModal() {
   document.getElementById('key-gen-result').classList.add('hidden');
   document.getElementById('keygen-pubkey').value = '';
