@@ -26,19 +26,25 @@ const ignoreNodeExtensionsPlugin = {
   },
 };
 
-// 🆕 新增：建立一個自訂的 esbuild 插件，專用來將 public/app.js 讀取為靜態字串 (修改處)
+// 建立一個自訂的 esbuild 插件，專用來將 public/app.js 讀取為靜態字串
+// 修正：在 onResolve 階段引入 node:path 並利用 args.resolveDir 動態解析出絕對路徑，消除相對路徑讀取出錯
 const clientJsLoaderPlugin = {
   name: 'client-js-loader',
   setup(build) {
-    build.onResolve({ filter: /^client-js:/ }, args => ({
-      path: args.path.replace(/^client-js:/, ''),
-      namespace: 'client-js-namespace',
-    }));
+    build.onResolve({ filter: /^client-js:/ }, async args => {
+      const path = await import('node:path');
+      const cleanPath = args.path.replace(/^client-js:/, '');
+      // 使用 args.resolveDir (即發起 import 的 src/ 目錄) 來將相對路徑轉譯為正確的絕對路徑
+      const absPath = path.resolve(args.resolveDir, cleanPath);
+      return {
+        path: absPath,
+        namespace: 'client-js-namespace',
+      };
+    });
     build.onLoad({ filter: /.*/, namespace: 'client-js-namespace' }, async args => {
       const fs = await import('node:fs/promises');
       const content = await fs.readFile(args.path, 'utf8');
       return {
-        // 將前端 js 文字內容編譯為 esm 預設導出，以便後端可以直接 import 
         contents: `export default ${JSON.stringify(content)};`,
         loader: 'js',
       };
@@ -143,7 +149,7 @@ try {
     banner: {
       js: bannerJs,
     },
-    // 加載我們自訂的 clientJsLoaderPlugin
+    // 加載優化後的 clientJsLoaderPlugin
     plugins: [ignoreNodeExtensionsPlugin, clientJsLoaderPlugin], 
     loader: {
       '.html': 'text',
