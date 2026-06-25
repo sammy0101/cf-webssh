@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Thu Jun 25 10:33:59 UTC 2026
+Generated on: Thu Jun 25 10:35:46 UTC 2026
 
 ## File: README.md
 ````md
@@ -1106,6 +1106,7 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
         <button id="logout-btn" onclick="handleLogout()" class="hidden bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded font-medium transition text-sm">
           登出
         </button>
+        <!-- 腳本管理按鈕 -->
         <button onclick="showScriptsModal()" class="bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 px-4 py-2 rounded font-medium transition text-sm">
           📜 常用腳本
         </button>
@@ -1197,7 +1198,7 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
 
   <!-- 常用腳本管理 Modal -->
   <div id="scripts-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-40">
-    <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-xl h-[70vh] flex flex-col shadow-2xl overflow-hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-xl h-[85vh] flex flex-col shadow-2xl overflow-hidden">
       <div class="pb-3 border-b border-slate-800 flex justify-between items-center bg-slate-900">
         <h2 class="text-xl font-bold text-emerald-400">📜 常用腳本管理</h2>
         <button onclick="hideScriptsModal()" class="text-slate-400 hover:text-white text-sm font-bold p-1">
@@ -1205,6 +1206,32 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
         </button>
       </div>
       
+      <!-- SSH 密鑰生成器 (新增：安全、本地 native ed25519 密鑰對生成功能) -->
+      <div class="py-4 border-b border-slate-800">
+        <div class="flex justify-between items-center mb-3">
+          <h3 class="text-sm font-bold text-slate-300">🔑 內建安全 SSH 密鑰生成器</h3>
+          <button onclick="generateSshKey()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded text-xs font-semibold transition">
+            一鍵生成 ED25519 密鑰對
+          </button>
+        </div>
+        <div id="key-gen-result" class="hidden space-y-3 mt-3">
+          <div>
+            <div class="flex justify-between items-center mb-1">
+              <label class="text-[10px] text-slate-400">公鑰 (Public Key) - 請追加至遠端 VPS <code>~/.ssh/authorized_keys</code></label>
+              <button onclick="copyToClipboard('keygen-pubkey')" class="text-[10px] text-emerald-400 hover:underline">複製</button>
+            </div>
+            <textarea id="keygen-pubkey" readonly rows="2" class="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-[10px] font-mono text-slate-300 select-all focus:outline-none"></textarea>
+          </div>
+          <div>
+            <div class="flex justify-between items-center mb-1">
+              <label class="text-[10px] text-slate-400">私鑰 (Private Key - PEM 格式) - 請妥善儲存或直接用於主機連線配置</label>
+              <button onclick="copyToClipboard('keygen-privkey')" class="text-[10px] text-emerald-400 hover:underline">複製</button>
+            </div>
+            <textarea id="keygen-privkey" readonly rows="4" class="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-[9px] font-mono text-slate-300 select-all focus:outline-none"></textarea>
+          </div>
+        </div>
+      </div>
+
       <!-- 新增腳本表單 -->
       <form id="script-form" onsubmit="saveScript(event)" class="py-4 border-b border-slate-800 space-y-3">
         <div class="grid grid-cols-3 gap-3">
@@ -1323,6 +1350,38 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
     </div>
   </div>
 
+  <!-- SFTP 遠端線上檔案編輯器 Modal (z-[70] 覆蓋於 SFTP 彈窗之上) (新增) -->
+  <div id="editor-modal" class="fixed inset-0 bg-black/85 hidden items-center justify-center p-4 z-[70]">
+    <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-3xl h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-fade-in">
+      
+      <!-- 編輯器標題 -->
+      <div class="pb-3 border-b border-slate-800 flex justify-between items-center bg-slate-900">
+        <h3 id="editor-file-title" class="font-bold text-amber-400 text-sm font-mono truncate max-w-[80%]">
+          📝 編輯遠端檔案
+        </h3>
+        <button onclick="closeFileEditor()" class="text-slate-400 hover:text-white text-xs">
+          取消 ✕
+        </button>
+      </div>
+      
+      <!-- 編輯內容文字區域 -->
+      <textarea id="editor-textarea" class="flex-1 w-full bg-slate-950 border border-slate-800 rounded p-4 text-xs font-mono text-slate-100 focus:outline-none focus:border-emerald-500 resize-none mt-4 whitespace-pre overflow-auto leading-relaxed" spellcheck="false"></textarea>
+      
+      <!-- 操作按鈕列 -->
+      <div class="mt-4 flex justify-end space-x-3">
+        <button onclick="closeFileEditor()" class="px-4 py-2 border border-slate-800 rounded hover:bg-slate-800 text-xs transition">
+          取消
+        </button>
+        <button onclick="saveRemoteFile()" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-white text-xs font-semibold transition flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path>
+          </svg>
+          儲存變更
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- 上傳與下載進度顯示遮罩 (維持 z-50 原樣) -->
   <div id="upload-overlay" class="fixed inset-0 bg-black/70 hidden items-center justify-center p-4 z-50">
     <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-sm shadow-2xl text-center">
@@ -1356,7 +1415,9 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
     let uploadOffset = 0;            // 上傳目前偏移行數
     const uploadChunkSize = 64 * 1024; // 上傳分塊大小
     let dragSourceEl = null;         // 拖拽源物件
-    let savedScripts = [];           // 全局快取腳本列表 (新增，配合樂觀更新機制，杜絕 KV 延遲問題)
+    let savedScripts = [];           // 全局快取腳本列表
+    let sftpModalModalOpen = false;  // 前端用來檢測 SFTP 是否已打開的變數
+    let editingFilePath = '';        // 當前編輯中的遠端純文字路徑 (新增)
 
     // 啟動入口
     document.addEventListener("DOMContentLoaded", checkAuth);
@@ -1851,6 +1912,20 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
             closeUploadOverlay();
           }
 
+          // H. 線上編輯：檔案讀取成功反應 (新增)
+          else if (msg.status === 'file_read_ok') {
+            if (editingFilePath === msg.path) {
+              document.getElementById('editor-textarea').value = msg.content;
+            }
+          }
+
+          // I. 線上編輯：檔案儲存成功反應 (新增)
+          else if (msg.status === 'file_write_ok') {
+            term.write(`\r\n[CF-WebSSH]: 遠端檔案 "${msg.path.split('/').pop()}" 儲存並覆寫成功！\r\n`);
+            closeFileEditor();
+            refreshSftpList();
+          }
+
         } catch (e) {
           console.error("SFTP 接收命令解析失敗:", e);
         }
@@ -1895,7 +1970,7 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
       }
     }
 
-    // 6.3 渲染遠端目錄檔案至 UI
+    // 6.3 渲染遠端目錄檔案至 UI (追加「線上編輯」按鈕支援)
     function renderSftpFiles(files) {
       const fileListContainer = document.getElementById('sftp-file-list');
       fileListContainer.innerHTML = '';
@@ -1928,6 +2003,18 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
         const actions = document.createElement('div');
         actions.className = "flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition duration-150 pl-2";
         
+        // 如果是可編輯的純文字檔案，顯示「編輯」按鈕 (新增)
+        if (!file.isDir && isEditableTextFile(file.name)) {
+          const editBtn = document.createElement('button');
+          editBtn.className = "text-amber-400 hover:text-amber-300 bg-slate-950 px-1 py-0.5 rounded text-[10px] font-medium";
+          editBtn.textContent = '編輯';
+          editBtn.onclick = (e) => {
+            e.stopPropagation();
+            sftpOpenFileEditor(file.name);
+          };
+          actions.appendChild(editBtn);
+        }
+
         if (!file.isDir) {
           // 下載按鈕
           const dlBtn = document.createElement('button');
@@ -1954,6 +2041,46 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
         item.appendChild(actions);
         fileListContainer.appendChild(item);
       });
+    }
+
+    // 6.3.2 判斷是否為可支援編輯的文字副檔名 (新增)
+    function isEditableTextFile(filename) {
+      const ext = filename.split('.').pop().toLowerCase();
+      const textExts = ['txt', 'conf', 'env', 'sh', 'yml', 'yaml', 'json', 'py', 'js', 'css', 'html', 'xml', 'md', 'ini', 'cfg', 'log', 'htaccess', 'svg'];
+      return !filename.includes('.') || textExts.includes(ext);
+    }
+
+    // 6.3.3 開啟線上遠端檔案編輯器 (新增)
+    function sftpOpenFileEditor(filename) {
+      if (!sftpWs || sftpWs.readyState !== WebSocket.OPEN) return;
+      editingFilePath = sftpCurrentPath === '/' ? `/${filename}` : `${sftpCurrentPath}/${filename}`;
+      
+      document.getElementById('editor-file-title').textContent = `📝 編輯遠端檔案: ${editingFilePath}`;
+      document.getElementById('editor-textarea').value = '遠端讀取與下載中，請稍候...';
+      
+      // 打開編輯器彈窗
+      const editorModal = document.getElementById('editor-modal');
+      editorModal.classList.remove('hidden');
+      editorModal.classList.add('flex');
+
+      // 發送讀取檔案之非同步要求
+      sftpWs.send(JSON.stringify({ action: 'file_read', path: editingFilePath }));
+    }
+
+    // 6.3.4 關閉線上檔案編輯器 (新增)
+    function closeFileEditor() {
+      document.getElementById('editor-modal').classList.add('hidden');
+      document.getElementById('editor-modal').classList.remove('flex');
+      editingFilePath = '';
+    }
+
+    // 6.3.6 儲存編輯器變更 (新增)
+    function saveRemoteFile() {
+      if (!sftpWs || sftpWs.readyState !== WebSocket.OPEN || !editingFilePath) return;
+      const content = document.getElementById('editor-textarea').value;
+      
+      // 發送覆寫寫入要求
+      sftpWs.send(JSON.stringify({ action: 'file_write', path: editingFilePath, content }));
     }
 
     // 6.3.5 新增「類 WINDOWS」路徑麵包屑動態渲染函數
@@ -2169,6 +2296,11 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
 
     function showScriptsModal() {
       document.getElementById('script-form').reset();
+      // 重設密鑰生成器提示區
+      document.getElementById('key-gen-result').classList.add('hidden');
+      document.getElementById('keygen-pubkey').value = '';
+      document.getElementById('keygen-privkey').value = '';
+      
       document.getElementById('scripts-modal').classList.remove('hidden');
       document.getElementById('scripts-modal').classList.add('flex');
       fetchScripts();
@@ -2255,6 +2387,76 @@ id = "KV_NAMESPACE_ID_PLACEHOLDER"
         ws.send(JSON.stringify({ type: 'data', data: command + '\r' }));
         selectElement.value = ''; // 復位下拉選單
       }
+    }
+
+    // ==========================================
+    // 🔑 內建安全 SSH ED25519 密鑰對生成器 (新增)
+    // ==========================================
+    async function generateSshKey() {
+      const btn = event ? event.target : null;
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '密鑰生成與編譯中...';
+      }
+
+      try {
+        // 1. 利用 WebCrypto 本地原生物理生成 Ed25519 密鑰對 (0網路通訊，安全度高)
+        const keyPair = await window.crypto.subtle.generateKey(
+          { name: "Ed25519" },
+          true,
+          ["sign", "verify"]
+        );
+
+        // 2. 匯出私鑰並格式化為標準 PKCS#8 PEM 格式 (ssh2 完全識別)
+        const privDer = await window.crypto.subtle.exportKey("pkcs8", keyPair.privateKey);
+        const privPem = derToPem(privDer, "PRIVATE KEY");
+
+        // 3. 匯出公鑰並格式化為標準 OpenSSH Ed25519 authorized_keys 字串
+        const pubDer = await window.crypto.subtle.exportKey("spki", keyPair.publicKey);
+        
+        // 提取 SPKI DER 結尾之關鍵 32-byte 密鑰
+        const derBytes = new Uint8Array(pubDer);
+        const rawPubKey = derBytes.slice(-32);
+        
+        // 拼裝序列化為 OpenSSH 標準 authorized_keys 位元組流陣列 (合計 51 位元組)
+        const sshPubKeyBytes = new Uint8Array(51);
+        sshPubKeyBytes[3] = 11; // 長度 11
+        const encoder = new TextEncoder();
+        sshPubKeyBytes.set(encoder.encode("ssh-ed25519"), 4); // 寫入標頭
+        sshPubKeyBytes[18] = 32; // 長度 32
+        sshPubKeyBytes.set(rawPubKey, 19); // 寫入 Raw 公鑰
+
+        const sshPubKeyB64 = btoa(String.fromCharCode(...sshPubKeyBytes));
+        const sshPubKeyStr = `ssh-ed25519 ${sshPubKeyB64} cf-webssh-keygen`;
+
+        document.getElementById('keygen-pubkey').value = sshPubKeyStr;
+        document.getElementById('keygen-privkey').value = privPem;
+
+        document.getElementById('key-gen-result').classList.remove('hidden');
+      } catch (err) {
+        console.error("生成密鑰失敗:", err);
+        alert(`密鑰生成失敗: ${err.message}`);
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = '一鍵生成 ED25519 密鑰對';
+        }
+      }
+    }
+
+    // 將 DER 二進位 ArrayBuffer 轉換為 Base64 格式 PEM 外殼字串 (新增)
+    function derToPem(derBuffer, label) {
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(derBuffer)));
+      const lines = base64.match(/.{1,64}/g).join('\n');
+      return `-----BEGIN ${label}-----\n${lines}\n-----END ${label}-----`;
+    }
+
+    // 一鍵複製輔助器 (新增)
+    function copyToClipboard(elementId) {
+      const el = document.getElementById(elementId);
+      el.select();
+      document.execCommand('copy');
+      alert('已成功複製到剪貼簿！');
     }
 
     // 7. 連線至 SSH 終端機
