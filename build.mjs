@@ -1,4 +1,9 @@
 import * as esbuild from 'esbuild';
+import { readFileSync } from 'node:fs'; // 🆕 引入原生存取模組 (修改處)
+
+// 🆕 自動讀取 package.json 中的專案版本號 (修改處)
+const pkg = JSON.parse(readFileSync('./package.json', 'utf8'));
+const version = pkg.version || '1.0.0';
 
 // 定義所有 Node.js 的內建核心模組名稱
 const nodeBuiltins = [
@@ -27,14 +32,12 @@ const ignoreNodeExtensionsPlugin = {
 };
 
 // 建立一個自訂的 esbuild 插件，專用來將 public/app.js 讀取為靜態字串
-// 修正：在 onResolve 階段引入 node:path 並利用 args.resolveDir 動態解析出絕對路徑，消除相對路徑讀取出錯
 const clientJsLoaderPlugin = {
   name: 'client-js-loader',
   setup(build) {
     build.onResolve({ filter: /^client-js:/ }, async args => {
       const path = await import('node:path');
       const cleanPath = args.path.replace(/^client-js:/, '');
-      // 使用 args.resolveDir (即發起 import 的 src/ 目錄) 來將相對路徑轉譯為正確的絕對路徑
       const absPath = path.resolve(args.resolveDir, cleanPath);
       return {
         path: absPath,
@@ -149,7 +152,10 @@ try {
     banner: {
       js: bannerJs,
     },
-    // 加載優化後的 clientJsLoaderPlugin
+    // 🆕 注入全域變數常數，於編譯期將版本號直接寫入 (修改處)
+    define: {
+      '__APP_VERSION__': JSON.stringify(version)
+    },
     plugins: [ignoreNodeExtensionsPlugin, clientJsLoaderPlugin], 
     loader: {
       '.html': 'text',
