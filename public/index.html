@@ -19,7 +19,7 @@
 
   <div id="app" class="container mx-auto p-6 max-w-6xl">
     <header class="mb-8 flex justify-between items-center border-b border-slate-800 pb-4">
-      <!-- 主畫面標題，左側帶有微型 terminal 圖示與自動化版本號徽章 (修改處) -->
+      <!-- 主畫面標題，左側帶有微型 terminal 圖示與自動化版本號徽章 -->
       <h1 class="text-2xl font-bold tracking-wider text-emerald-400 flex items-center gap-2">
         <svg class="w-8 h-8 text-emerald-400" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
           <rect width="100" height="100" rx="25" fill="#020617" stroke="currentColor" stroke-width="6"/>
@@ -33,6 +33,10 @@
         <!-- 登出按鈕，僅在啟用密碼驗證且登入成功時顯示 -->
         <button id="logout-btn" onclick="handleLogout()" class="hidden bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded font-medium transition text-sm">
           登出
+        </button>
+        <!-- 獨立 SSH 密鑰生成器觸發按鈕 (已重新補回) -->
+        <button onclick="showKeygenModal()" class="bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 px-4 py-2 rounded font-medium transition text-sm">
+          🔑 密鑰生成
         </button>
         <!-- 腳本管理按鈕 -->
         <button onclick="showScriptsModal()" class="bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 px-4 py-2 rounded font-medium transition text-sm">
@@ -58,7 +62,7 @@
   <!-- 登入全螢幕遮罩 -->
   <div id="login-overlay" class="fixed inset-0 bg-slate-950 flex hidden items-center justify-center p-4 z-50 animate-fade-in">
     <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-sm shadow-2xl text-center">
-      <!-- 登入介面的中置大型 LOGO 與動態版本號徽章 (修改處) -->
+      <!-- 登入介面的中置大型 LOGO 與動態版本號徽章 -->
       <div class="flex justify-center mb-4">
         <svg class="w-16 h-16 text-emerald-400" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
           <rect width="100" height="100" rx="25" fill="#020617" stroke="currentColor" stroke-width="6"/>
@@ -137,7 +141,7 @@
           關閉 ✕
         </button>
       </div>
-      
+
       <!-- 新增腳本表單 -->
       <form id="script-form" onsubmit="saveScript(event)" class="py-4 border-b border-slate-800 space-y-3">
         <div class="grid grid-cols-3 gap-3">
@@ -162,7 +166,7 @@
     </div>
   </div>
 
-  <!-- SSH 獨立密鑰生成器 Modal (z-40) -->
+  <!-- SSH 獨立密鑰生成器 Modal (已重新完整還原並補回) -->
   <div id="keygen-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-40">
     <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-2xl h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-fade-in">
       <div class="pb-3 border-b border-slate-800 flex justify-between items-center bg-slate-900 mb-4">
@@ -285,7 +289,7 @@
         <!-- 整合至檔案管理器內的手動上傳按鈕 -->
         <button onclick="triggerFileInput()" class="text-xs bg-emerald-600 hover:bg-emerald-500 text-white px-3.5 py-1.5 rounded font-semibold transition flex items-center gap-1.5">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
           </svg>
           上傳檔案
         </button>
@@ -329,7 +333,7 @@
           取消
         </button>
         <button onclick="saveRemoteFile()" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-white text-xs font-semibold transition flex items-center gap-1.5">
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path>
           </svg>
           儲存變更
