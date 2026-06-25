@@ -97,7 +97,7 @@ export default {
     if (url.pathname === '/api/logout' && request.method === 'POST') {
       return new Response(JSON.stringify({ success: true }), {
         headers: {
-          'Content-Type': 'application/javascript',
+          'Content-Type': 'application/json',
           'Set-Cookie': 'webssh_token=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0'
         }
       });
