@@ -13,11 +13,10 @@ let uploadOffset = 0;            // 上傳目前偏移行數
 const uploadChunkSize = 64 * 1024; // 上傳分塊大小
 let dragSourceEl = null;         // 拖拽源物件
 let savedScripts = [];           // 全局快取腳本列表
-let sftpModalModalOpen = false;  // 前端用來檢測 SFTP 是否已打開的變數
 let editingFilePath = '';        // 當前編輯中的遠端純文字路徑
 
 // ==========================================
-// 🔑 瀏覽器端堆疊安全之二進位轉碼輔助函數 (新增，修復未定義錯誤)
+// 🔑 瀏覽器端堆疊安全之二進位轉碼輔助函數
 // ==========================================
 function arrayBufferToBase64(buffer) {
   let binary = '';
@@ -422,7 +421,7 @@ function handleFileSelect(event) {
   }
 }
 
-// 6. 建立單一 SFTP WebSocket 安全連線 (修復非同步競合 Race Condition)
+// 6. 建立單一 SFTP WebSocket 安全連線
 function connectSftpWebSocket() {
   if (!activeConnectionId) return;
   const fileListContainer = document.getElementById('sftp-file-list');
@@ -969,10 +968,10 @@ function runSelectedScript(selectElement) {
 }
 
 // ==========================================
-// 🔑 內建安全 SSH 密鑰對生成器 (已補上與還原 arrayBufferToBase64)
+// 🔑 內建安全 SSH 密鑰對生成器 (優化接收 Event 參數)
 // ==========================================
-async function generateSshKey() {
-  const btn = event ? event.target : null;
+async function generateSshKey(e) {
+  const btn = e ? e.target : null;
   if (btn) {
     btn.disabled = true;
     btn.textContent = '密鑰生成與編譯中...';
@@ -1080,7 +1079,7 @@ function formatOpenSshRsa(jwk) {
   combined.set(part2, part1.byteLength);
   combined.set(part3, part1.byteLength + part2.byteLength);
   
-  const b64 = arrayBufferToBase64(combined); // 已補回
+  const b64 = arrayBufferToBase64(combined);
   return `ssh-rsa ${b64} cf-webssh-keygen`;
 }
 
@@ -1108,7 +1107,7 @@ function formatOpenSshEcdsa(jwk) {
   combined.set(part2, part1.byteLength);
   combined.set(part3, part1.byteLength + part2.byteLength);
   
-  const b64 = arrayBufferToBase64(combined); // 已補回
+  const b64 = arrayBufferToBase64(combined);
   return `ecdsa-sha2-nistp256 ${b64} cf-webssh-keygen`;
 }
 
@@ -1139,8 +1138,9 @@ function writeLengthPrefixed(bytes) {
   return combined;
 }
 
+// DER 轉 PEM (優化：改呼叫頂部安全的 arrayBufferToBase64 避免大 key 堆疊溢位錯誤)
 function derToPem(derBuffer, label) {
-  const base64 = btoa(String.fromCharCode(...new Uint8Array(derBuffer)));
+  const base64 = arrayBufferToBase64(derBuffer);
   const lines = base64.match(/.{1,64}/g).join('\n');
   return `-----BEGIN ${label}-----\n${lines}\n-----END ${label}-----`;
 }
@@ -1241,7 +1241,7 @@ function closeTerminal() {
   document.getElementById('terminal-screen').classList.remove('flex');
 }
 
-// 開關金鑰生成器彈窗 (已重新補回)
+// 開關金鑰生成器彈窗
 function showKeygenModal() {
   document.getElementById('key-gen-result').classList.add('hidden');
   document.getElementById('keygen-pubkey').value = '';
