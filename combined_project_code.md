@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Thu Jun 25 13:46:35 UTC 2026
+Generated on: Thu Jun 25 13:47:17 UTC 2026
 
 ## File: README.md
 ````md
@@ -1143,7 +1143,7 @@ let sftpCurrentPath = '.';       // 當前檔案管理器絕對路徑
 let sftpModalOpen = false;       // 檔案管理器彈窗開關狀態 (改為 Modal)
 let sftpFileChunks = [];         // 用於下載儲存二進位區塊
 let currentDownloadingFilename = ''; // 當前正在下載的檔名
-let uploadFile = null;           // 當前正在上傳 the File 物件
+let uploadFile = null;           // 當前正在上傳的 File 物件
 let uploadOffset = 0;            // 上傳目前偏移行數
 const uploadChunkSize = 64 * 1024; // 上傳分塊大小
 let dragSourceEl = null;         // 拖拽源物件
@@ -1183,6 +1183,15 @@ async function checkAuth() {
     const res = await fetch('/api/auth-check');
     const auth = await res.json();
     
+    // 動態更新網頁主標題與登入畫面的版本號 (已補上與還原)
+    if (auth.version) {
+      const versionStr = `v${auth.version}`;
+      const verEl = document.getElementById('app-version');
+      if (verEl) verEl.textContent = versionStr;
+      const loginVerEl = document.getElementById('login-app-version');
+      if (loginVerEl) loginVerEl.textContent = versionStr;
+    }
+
     if (auth.required) {
       if (auth.authenticated) {
         document.getElementById('logout-btn').classList.remove('hidden');
@@ -1345,11 +1354,11 @@ async function handleDrop(e) {
     const sourceIdx = cards.findIndex(c => c.getAttribute('data-id') === sourceId);
     const targetIdx = cards.findIndex(c => c.getAttribute('data-id') === targetId);
 
-        if (sourceIdx < targetIdx) {
-          grid.insertBefore(cards[sourceIdx], cards[targetIdx].nextSibling);
-        } else {
-          grid.insertBefore(cards[sourceIdx], cards[targetIdx]);
-        }
+    if (sourceIdx < targetIdx) {
+      grid.insertBefore(cards[sourceIdx], cards[targetIdx].nextSibling);
+    } else {
+      grid.insertBefore(cards[sourceIdx], cards[targetIdx]);
+    }
 
     // 向後端上傳保存全新的排序數據
     await saveConnectionsOrder();
@@ -1565,6 +1574,7 @@ function connectSftpWebSocket() {
   };
 
   sftpWs.onmessage = async (event) => {
+    // I. 處理檔案下載的二進位區塊 (Chunk)
     if (event.data instanceof ArrayBuffer) {
       sftpFileChunks.push(event.data);
       sftpWs.send(JSON.stringify({ action: 'download_next' }));
@@ -1575,6 +1585,7 @@ function connectSftpWebSocket() {
       return;
     }
 
+    // II. 處理 JSON 格式控制回饋指令
     try {
       const msg = JSON.parse(event.data);
 
@@ -1684,7 +1695,7 @@ function disconnectSftpWebSocket() {
   }
 }
 
-// 6.1 開關檔案管理器彈出視窗
+// 6.1 開關檔案管理器彈出視窗 (修改為 Modal 視窗形式，保證絕對可見性)
 function toggleSftpModal() {
   const modal = document.getElementById('sftp-modal');
   sftpModalOpen = !sftpModalOpen;
@@ -1860,14 +1871,12 @@ function sftpGoUp() {
   refreshSftpList();
 }
 
-// 檔案下載要求
 function sftpDownloadFile(filename) {
   if (!sftpWs || sftpWs.readyState !== WebSocket.OPEN) return;
   const targetPath = sftpCurrentPath === '/' ? `/${filename}` : `${sftpCurrentPath}/${filename}`;
   sftpWs.send(JSON.stringify({ action: 'download_start', path: targetPath }));
 }
 
-// 刪除遠端對象
 function sftpDeleteFile(filename, isDir) {
   if (!sftpWs || sftpWs.readyState !== WebSocket.OPEN) return;
   const typeStr = isDir ? '資料夾' : '檔案';
@@ -1877,7 +1886,6 @@ function sftpDeleteFile(filename, isDir) {
   sftpWs.send(JSON.stringify({ action: 'delete', path: targetPath, isDir }));
 }
 
-// 檔案上傳
 function handleSftpUpload(connectionId, file) {
   if (!sftpWs || sftpWs.readyState !== WebSocket.OPEN) {
     alert('SFTP 安全通道尚未就緒，請重試。');
@@ -1905,7 +1913,6 @@ function handleSftpUpload(connectionId, file) {
   sftpWs.send(JSON.stringify({ action: 'upload_start', filename: file.name, path: targetPath }));
 }
 
-// 發送下一個上傳區塊
 function sendNextUploadChunk() {
   const nextSize = Math.min(uploadChunkSize, uploadFile.size - uploadOffset);
   const slice = uploadFile.slice(uploadOffset, uploadOffset + nextSize);
@@ -1919,7 +1926,6 @@ function sendNextUploadChunk() {
   reader.readAsArrayBuffer(slice);
 }
 
-// 處理上傳 Ack
 function handleUploadAck(written) {
   if (sftpUploadCancelled) return;
   uploadOffset += written;
@@ -1936,6 +1942,7 @@ function handleUploadAck(written) {
   if (uploadOffset < uploadFile.size) {
     sendNextUploadChunk();
   } else {
+    // 完成上傳
     sftpWs.send(JSON.stringify({ action: 'upload_end' }));
   }
 }
@@ -2097,7 +2104,7 @@ function runSelectedScript(selectElement) {
 }
 
 // ==========================================
-// 🔑 內建安全 SSH 密鑰對生成器 (修復未定義調用錯誤)
+// 🔑 內建安全 SSH 密鑰對生成器 (已補上與還原 arrayBufferToBase64)
 // ==========================================
 async function generateSshKey() {
   const btn = event ? event.target : null;
@@ -2208,7 +2215,7 @@ function formatOpenSshRsa(jwk) {
   combined.set(part2, part1.byteLength);
   combined.set(part3, part1.byteLength + part2.byteLength);
   
-  const b64 = arrayBufferToBase64(combined);
+  const b64 = arrayBufferToBase64(combined); // 已補回
   return `ssh-rsa ${b64} cf-webssh-keygen`;
 }
 
@@ -2236,7 +2243,7 @@ function formatOpenSshEcdsa(jwk) {
   combined.set(part2, part1.byteLength);
   combined.set(part3, part1.byteLength + part2.byteLength);
   
-  const b64 = arrayBufferToBase64(combined);
+  const b64 = arrayBufferToBase64(combined); // 已補回
   return `ecdsa-sha2-nistp256 ${b64} cf-webssh-keygen`;
 }
 
@@ -2369,7 +2376,7 @@ function closeTerminal() {
   document.getElementById('terminal-screen').classList.remove('flex');
 }
 
-// 開關金鑰生成器彈窗
+// 開關金鑰生成器彈窗 (已重新補回)
 function showKeygenModal() {
   document.getElementById('key-gen-result').classList.add('hidden');
   document.getElementById('keygen-pubkey').value = '';
