@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Thu Jun 25 10:44:52 UTC 2026
+Generated on: Thu Jun 25 10:45:37 UTC 2026
 
 ## File: README.md
 ````md
@@ -2728,8 +2728,27 @@ const ignoreNodeExtensionsPlugin = {
   },
 };
 
+// 🆕 新增：建立一個自訂的 esbuild 插件，專用來將 public/app.js 讀取為靜態字串 (修改處)
+const clientJsLoaderPlugin = {
+  name: 'client-js-loader',
+  setup(build) {
+    build.onResolve({ filter: /^client-js:/ }, args => ({
+      path: args.path.replace(/^client-js:/, ''),
+      namespace: 'client-js-namespace',
+    }));
+    build.onLoad({ filter: /.*/, namespace: 'client-js-namespace' }, async args => {
+      const fs = await import('node:fs/promises');
+      const content = await fs.readFile(args.path, 'utf8');
+      return {
+        // 將前端 js 文字內容編譯為 esm 預設導出，以便後端可以直接 import 
+        contents: `export default ${JSON.stringify(content)};`,
+        loader: 'js',
+      };
+    });
+  },
+};
+
 // 撰寫具備高度診斷與防禦機制的 Banner 代碼
-// 在最頂端加入 // @ts-nocheck 即可讓 Cloudflare 網頁編輯器完全關閉型別檢驗與紅字報錯 (修改處)
 const bannerJs = `// @ts-nocheck
 import { createRequire } from 'node:module';
 const __filename = 'index.js';
@@ -2826,7 +2845,8 @@ try {
     banner: {
       js: bannerJs,
     },
-    plugins: [ignoreNodeExtensionsPlugin],
+    // 加載我們自訂的 clientJsLoaderPlugin
+    plugins: [ignoreNodeExtensionsPlugin, clientJsLoaderPlugin], 
     loader: {
       '.html': 'text',
     },
