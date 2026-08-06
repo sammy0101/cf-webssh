@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Thu Aug  6 11:26:15 UTC 2026
+Generated on: Thu Aug  6 11:26:42 UTC 2026
 
 ## File: wrangler.toml
 ````toml
@@ -1156,7 +1156,7 @@ export async function getExpectedToken(adminPassword) {
   return await hashPassword(adminPassword + "cf-webssh-salt-2026");
 }
 
-// 🆕 建立臨時快速連線 Token (AES-GCM 加密，不寫入 KV 資料庫)
+// 建立臨時快速連線 Token (AES-GCM 加密，不寫入 KV 資料庫)
 export async function createQuickConnectToken(configData, adminPassword, isAuthEnabled) {
   const jsonStr = JSON.stringify({
     host: configData.host || '',
@@ -1172,7 +1172,7 @@ export async function createQuickConnectToken(configData, adminPassword, isAuthE
   return `temp:${encrypted}`;
 }
 
-// 🆕 解析與解密臨時快速連線 Token
+// 解析與解密臨時快速連線 Token
 export async function parseQuickConnectToken(token, adminPassword, isAuthEnabled) {
   if (!token || !token.startsWith('temp:')) return null;
   const encryptedStr = token.substring(5);
