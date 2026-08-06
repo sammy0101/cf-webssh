@@ -1,6 +1,6 @@
 import htmlContent from '../public/index.html';
 import appJs from 'client-js:../public/app.js'; 
-import { deriveKey, encryptText, decryptText, hashPassword, getExpectedToken } from './crypto.js';
+import { deriveKey, encryptText, decryptText, hashPassword, getExpectedToken, createQuickConnectToken, parseQuickConnectToken } from './crypto.js';
 import { handleSSHUpgrade } from './ssh.js';
 import { handleSFTPUpgrade } from './sftp.js';
 
@@ -42,7 +42,6 @@ export default {
 
     // 1. 靜態網頁分發
     if (url.pathname === '/' || url.pathname === '/index.html') {
-      // 🆕 透過動態注入版本查詢字串（Cache Busting）強制瀏覽器立刻載入最新前端代碼，防止載入快取舊檔 (修改處)
       const parsedHtml = htmlContent.replace('/app.js', `/app.js?v=${APP_VERSION}`);
       return new Response(parsedHtml, {
         headers: { 'Content-Type': 'text/html; charset=utf-8' },
@@ -62,7 +61,7 @@ export default {
       return new Response(JSON.stringify({
         required: isAuthEnabled,
         authenticated: authorized,
-        version: APP_VERSION // 傳遞版本號給前端
+        version: APP_VERSION
       }), {
         headers: { 'Content-Type': 'application/json' }
       });
@@ -101,6 +100,28 @@ export default {
           'Set-Cookie': 'webssh_token=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0'
         }
       });
+    }
+
+    // 🆕 1.5 API: 快速/臨時連線 (完全不存入 KV)
+    if (url.pathname === '/api/quick-connect' && request.method === 'POST') {
+      try {
+        const data = await request.json();
+        if (!data.host || !data.username) {
+          return new Response(JSON.stringify({ error: '缺少必要欄位' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        const tempId = await createQuickConnectToken(data, adminPassword, isAuthEnabled);
+        return new Response(JSON.stringify({ success: true, tempId }), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
     }
 
     // 2. API: 獲取已儲存的連線列表
@@ -394,22 +415,42 @@ export default {
       }
     }
 
-    // 5. WebSocket: SSH 終端通道 (路由至獨立處理模組)
+    // 5. WebSocket: SSH 終端通道 (支援一般 KV 連線與臨時快速連線)
     if (url.pathname.startsWith('/ssh/') && request.headers.get('Upgrade') === 'websocket') {
       const id = url.pathname.split('/').pop();
-      const connectionVal = await env.WEBSSH_KV.get(`connection:${id}`);
-      if (!connectionVal) return new Response('連線配置不存在', { status: 404 });
-      const config = JSON.parse(connectionVal);
+      let config = null;
+
+      if (id.startsWith('temp:')) {
+        try {
+          config = await parseQuickConnectToken(id, adminPassword, isAuthEnabled);
+        } catch (err) {
+          return new Response('臨時連線 Token 無效或已過期', { status: 400 });
+        }
+      } else {
+        const connectionVal = await env.WEBSSH_KV.get(`connection:${id}`);
+        if (!connectionVal) return new Response('連線配置不存在', { status: 404 });
+        config = JSON.parse(connectionVal);
+      }
 
       return handleSSHUpgrade(request, env, config, isAuthEnabled, adminPassword, deriveKey, decryptText);
     }
 
-    // 6. WebSocket: SFTP 全功能通道 (路由至獨立處理模組)
+    // 6. WebSocket: SFTP 全功能通道 (支援一般 KV 連線與臨時快速連線)
     if (url.pathname.startsWith('/sftp/') && request.headers.get('Upgrade') === 'websocket') {
       const id = url.pathname.split('/').pop();
-      const connectionVal = await env.WEBSSH_KV.get(`connection:${id}`);
-      if (!connectionVal) return new Response('連線配置不存在', { status: 404 });
-      const config = JSON.parse(connectionVal);
+      let config = null;
+
+      if (id.startsWith('temp:')) {
+        try {
+          config = await parseQuickConnectToken(id, adminPassword, isAuthEnabled);
+        } catch (err) {
+          return new Response('臨時連線 Token 無效或已過期', { status: 400 });
+        }
+      } else {
+        const connectionVal = await env.WEBSSH_KV.get(`connection:${id}`);
+        if (!connectionVal) return new Response('連線配置不存在', { status: 404 });
+        config = JSON.parse(connectionVal);
+      }
 
       return handleSFTPUpgrade(request, env, config, isAuthEnabled, adminPassword, deriveKey, decryptText);
     }
