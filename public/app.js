@@ -275,9 +275,6 @@ function showQuickConnectModal() {
   const portInput = document.getElementById('quick-port');
   if (portInput) portInput.value = '22';
 
-  const userInput = document.getElementById('quick-username');
-  if (userInput) userInput.value = 'root';
-
   toggleQuickAuthType();
 
   modal.classList.remove('hidden');
@@ -577,7 +574,9 @@ function connectSftpWebSocket() {
       }
 
       else if (msg.status === 'upload_ok') {
-        term.write(`\r\n[CF-WebSSH]: 檔案上傳成功！已儲存至 ${sftpCurrentPath} 檔案路徑。\r\n`);
+        if (term) {
+          term.write(`\r\n[CF-WebSSH]: 檔案上傳成功！已儲存至 ${sftpCurrentPath} 檔案路徑。\r\n`);
+        }
         closeUploadOverlay();
         refreshSftpList();
       }
@@ -623,7 +622,9 @@ function connectSftpWebSocket() {
       }
 
       else if (msg.status === 'file_write_ok') {
-        term.write(`\r\n[CF-WebSSH]: 遠端檔案 "${msg.path.split('/').pop()}" 儲存並覆寫成功！\r\n`);
+        if (term) {
+          term.write(`\r\n[CF-WebSSH]: 遠端檔案 "${msg.path.split('/').pop()}" 儲存並覆寫成功！\r\n`);
+        }
         closeFileEditor();
         refreshSftpList();
       }
@@ -907,7 +908,9 @@ function cancelUpload() {
     sftpWs.send(JSON.stringify({ action: 'upload_cancel' }));
   }
   closeUploadOverlay();
-  term.write(`\r\n[CF-WebSSH]: 使用者手動取消了傳輸工作。\r\n`);
+  if (term) {
+    term.write(`\r\n[CF-WebSSH]: 使用者手動取消了傳輸工作。\r\n`);
+  }
   refreshSftpList();
 }
 
