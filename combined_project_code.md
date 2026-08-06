@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Thu Aug  6 10:56:11 UTC 2026
+Generated on: Thu Aug  6 10:56:42 UTC 2026
 
 ## File: wrangler.toml
 ````toml
@@ -2683,6 +2683,10 @@ function hideKeygenModal() {
         <button onclick="showScriptsModal()" class="bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 px-4 py-2 rounded font-medium transition text-sm">
           📜 常用腳本
         </button>
+        <!-- 🆕 快速連線按鈕 (免儲存) -->
+        <button onclick="showQuickConnectModal()" class="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded font-medium transition text-sm">
+          ⚡ 快速連線
+        </button>
         <button onclick="showAddModal()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded font-medium transition text-sm">
           新增伺服器
         </button>
@@ -2720,6 +2724,59 @@ function hideKeygenModal() {
         <input type="password" id="login-password" required placeholder="請輸入密碼" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500 text-center mb-4">
         <button type="submit" class="w-full py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-white font-medium transition">驗證並登入</button>
         <p id="login-error" class="text-xs text-rose-500 mt-3 hidden"></p>
+      </form>
+    </div>
+  </div>
+
+  <!-- 🆕 快速/臨時連線 Modal (完全不寫入 KV 資料庫) -->
+  <div id="quick-connect-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-40">
+    <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-lg shadow-2xl">
+      <div class="flex justify-between items-center mb-2">
+        <h2 class="text-xl font-bold text-amber-400 flex items-center gap-2">
+          ⚡ 快速連線
+          <span class="text-xs bg-amber-950 text-amber-300 border border-amber-800 px-2 py-0.5 rounded font-normal">免新增/不儲存</span>
+        </h2>
+        <button onclick="hideQuickConnectModal()" class="text-slate-400 hover:text-white text-sm font-bold p-1">
+          ✕
+        </button>
+      </div>
+      <p class="text-xs text-slate-400 mb-4">直接輸入主機連線資訊即可快速開始作業，憑據絕不寫入資料庫。</p>
+      <form id="quick-connect-form" onsubmit="handleQuickConnect(event)">
+        <div class="space-y-4">
+          <div class="grid grid-cols-3 gap-4">
+            <div class="col-span-2">
+              <label class="block text-sm text-slate-400 mb-1">主機 IP / 域名</label>
+              <input type="text" id="quick-host" required placeholder="192.168.1.1" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-amber-500">
+            </div>
+            <div>
+              <label class="block text-sm text-slate-400 mb-1">端口</label>
+              <input type="number" id="quick-port" value="22" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-amber-500">
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm text-slate-400 mb-1">使用者名稱</label>
+            <input type="text" id="quick-username" required placeholder="root" value="root" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-amber-500">
+          </div>
+          <div>
+            <label class="block text-sm text-slate-400 mb-1">驗證方式</label>
+            <select id="quick-auth-type" onchange="toggleQuickAuthType()" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-amber-500">
+              <option value="password">密碼驗證</option>
+              <option value="key">Ed25519 / RSA 私鑰驗證</option>
+            </select>
+          </div>
+          <div id="quick-password-field">
+            <label class="block text-sm text-slate-400 mb-1">密碼</label>
+            <input type="password" id="quick-password" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-amber-500">
+          </div>
+          <div id="quick-key-field" class="hidden">
+            <label class="block text-sm text-slate-400 mb-1">私鑰 (PEM 格式)</label>
+            <textarea id="quick-privatekey" rows="4" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-amber-500"></textarea>
+          </div>
+        </div>
+        <div class="mt-6 flex justify-end space-x-3">
+          <button type="button" onclick="hideQuickConnectModal()" class="px-4 py-2 border border-slate-800 rounded hover:bg-slate-800 transition text-sm">取消</button>
+          <button type="submit" class="px-5 py-2 bg-amber-600 hover:bg-amber-500 rounded text-white font-medium transition text-sm">即刻連線</button>
+        </div>
       </form>
     </div>
   </div>
@@ -2807,7 +2864,7 @@ function hideKeygenModal() {
     </div>
   </div>
 
-  <!-- SSH 獨立密鑰生成器 Modal (優化呼叫 generateSshKey 傳參) -->
+  <!-- SSH 獨立密鑰生成器 Modal -->
   <div id="keygen-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-40">
     <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-2xl h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-fade-in">
       <div class="pb-3 border-b border-slate-800 flex justify-between items-center bg-slate-900 mb-4">
@@ -2831,7 +2888,6 @@ function hideKeygenModal() {
               <option value="ecdsa">ECDSA P-256 (橢圓曲線)</option>
             </select>
           </div>
-          <!-- 優化：顯式向下傳遞 event 物件 -->
           <button onclick="generateSshKey(event)" class="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-1.5 rounded text-xs font-bold transition">
             一鍵生成安全密鑰
           </button>
@@ -2937,7 +2993,7 @@ function hideKeygenModal() {
         </button>
       </div>
 
-      <!-- 目前目錄路徑顯示欄（改為「類 WINDOWS」互動式麵包屑導航條） -->
+      <!-- 目前目錄路徑顯示欄 -->
       <div class="p-2 border-b border-slate-800 bg-slate-950 flex items-center gap-1">
         <span class="text-xs text-slate-500 font-mono pr-1 select-none">路徑:</span>
         <div id="sftp-breadcrumbs" class="flex-1 flex items-center flex-wrap gap-1 text-[11px] font-mono select-none">
