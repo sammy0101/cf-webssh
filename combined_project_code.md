@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Thu Aug  6 11:08:56 UTC 2026
+Generated on: Thu Aug  6 11:23:53 UTC 2026
 
 ## File: wrangler.toml
 ````toml
@@ -2750,7 +2750,7 @@ function hideKeygenModal() {
         <button onclick="showScriptsModal()" class="bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 px-4 py-2 rounded font-medium transition text-sm">
           📜 常用腳本
         </button>
-        <!-- 🆕 快速連線按鈕 (免儲存) -->
+        <!-- 快速連線按鈕 (免儲存) -->
         <button onclick="showQuickConnectModal()" class="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded font-medium transition text-sm">
           ⚡ 快速連線
         </button>
@@ -2795,7 +2795,7 @@ function hideKeygenModal() {
     </div>
   </div>
 
-  <!-- 🆕 快速/臨時連線 Modal (完全不寫入 KV 資料庫) -->
+  <!-- 快速/臨時連線 Modal (完全不寫入 KV 資料庫) -->
   <div id="quick-connect-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-40">
     <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-lg shadow-2xl">
       <div class="flex justify-between items-center mb-2">
