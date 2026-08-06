@@ -102,7 +102,7 @@ export default {
       });
     }
 
-    // 🆕 1.5 API: 快速/臨時連線 (完全不存入 KV)
+    // 1.5 API: 快速/臨時連線 (完全不存入 KV)
     if (url.pathname === '/api/quick-connect' && request.method === 'POST') {
       try {
         const data = await request.json();
