@@ -1,352 +1,198 @@
 # Complete Project Codebase
-Generated on: Thu Jun 25 14:01:58 UTC 2026
+Generated on: Thu Aug  6 10:54:45 UTC 2026
 
-## File: README.md
-````md
-# cf-webssh
+## File: wrangler.toml
+````toml
+name = "cf-webssh"
+main = "dist/index.js"
+compatibility_date = "2026-01-01"
+compatibility_flags = [ "nodejs_compat" ]
 
-一個基於 Cloudflare Workers 平台建置的輕量級、高度安全、完全模組化解耦的互動式 WebSSH 終端機與 SFTP 遠端檔案管理工作台。
+[[kv_namespaces]]
+binding = "WEBSSH_KV"
+id = "KV_NAMESPACE_ID_PLACEHOLDER"
 
-本專案利用 Cloudflare 原生 TCP 接口（透過相容性標誌 `nodejs_compat` 啟用 `cloudflare:sockets`）與遠端主機建立安全的 SSH 通道，並在瀏覽器前端使用 `xterm.js` 提供互動性終端、視覺化 SFTP 檔案管理器、遠端檔案線上編輯器，以及本地安全密鑰生成器。
-
-## 🎯 專案特點
-
-- **無伺服器架構**：完全依賴 Cloudflare Workers 邊緣網路，無需部署與維護傳統的 WebSSH 後端伺服器（如 Bastion、Guacamole 等）。
-- **解耦與模組化分檔管理**：
-  - 本地開發專案採用高維護性分檔結構：安全加密（`crypto.js`）、終端通訊（`ssh.js`）、SFTP 管理（`sftp.js`）、主路由入口（`index.js`），以及前端頁面（`index.html`）與核心控制指令碼（`app.js`）。
-  - **極速載入**：在構建編譯時（`build.mjs`），透過自訂的 esbuild 插件，自動將前端 JavaScript 程式碼轉化為靜態字串併入 Worker 的部署檔中，使您的專案既具有本地開發的整潔度，又擁有極佳的邊緣端載入速度。
-- **動態版本號同步**：
-  - 主畫面標題旁與登入介面會自動展示當前的系統版本號（例如 `v2.0.0`），該版本號完全由構建指令碼在打包編譯時，自動、動態地與 `package.json` 內的 `"version"` 欄位進行實時同步。
-- **全庫零知識（Zero-Knowledge）端到端對稱加密**：
-  - 當設定管理員密碼（環境變數 `ADMIN_PASSWORD`）時，系統會自動在 Worker 記憶體中利用您的密碼雜湊衍生出 256 位元的對稱金鑰。
-  - 主機連線欄位（包括主機 IP/域名、主機名稱、端口、使用者名稱、連線密碼與私鑰）在寫入 Cloudflare KV 前，**皆全數透過原生 WebCrypto API 執行強度的 AES-GCM-256 對稱加密**。
-  - **安全性**：即便 Cloudflare 帳戶或 KV 資料庫整庫被導出洩漏，攻擊者也完全無法得知您管理的 VPS 名稱、IP 位置與登入帳密。
-  - **向下相容**：系統具備智慧判定，若偵測到未加密的舊有資料會自動以明文格式讀取，不影響您原先已儲存的配置。您只需在網頁上對舊主機點選「編輯 -> 儲存」，系統便會自動將其無損升級為加密狀態。
-- **一體化 SFTP 遠端檔案管理器**：
-  - 前端頂部整合為單一 **「📁 SFTP 檔案管理」** 彈窗視窗，可直接在終端機畫面上方彈出，體驗一體化。
-  - **📝 遠端檔案線上編輯器**：點選文字格式檔案（如 `.conf`、`.sh`、`.env`、`.json`、`.yml` 等）旁的 **「編輯」** 按鈕，右側會直接拉出一個大面積的代碼編輯器彈窗，修改後點擊「儲存變更」即可即時覆寫寫入 VPS，免去使用終端機 `vim` / `nano` 的繁瑣步驟。
-  - **「類 Windows」麵包屑導航**：自動將目前的絕對路徑分割為可點選的級聯節點（如 `🏠 / root / apps`），點選即可快速跨目錄跳轉。
-  - **檔案瀏覽與導航**：點選資料夾可直接進入，支援目錄深層導航、向上返回與重新整理。
-  - **檔案下載與完整性流控制（Backpressure）**：採用 Web 串流控制，發送一塊數據確認一塊，絕不撐爆 Worker 記憶體，支援大檔案的安全流式下載。
-  - **拖放與手動上傳**：支援將電腦檔案直接拖曳至終端機畫面上傳，或點選視窗內的「上傳檔案」手動選取，自動上傳至目前瀏覽的目錄中。
-  - **檔案刪除**：支援一鍵永久刪除遠端 VPS 上的檔案或空資料夾。
-- **內建多算法安全 SSH 密鑰生成器**：
-  - 主畫面 Header 新增獨立的 **「🔑 密鑰生成」** 彈窗。完全由瀏覽器端 WebCrypto 引擎本地生成，保證極限物理安全。
-  - **支援四種主流算法**：`ED25519` (高安全、推薦)、`RSA-2048` (高相容)、`RSA-4096` (極高安全)、`ECDSA P-256` (橢圓曲線)。
-  - **標準 OpenSSH 公鑰序列化編譯**：內建 OpenSSH 公鑰字節序列化解析器，自動將 DER 編碼編譯成可以直接寫入 Linux `authorized_keys` 的標準 `ssh-rsa`、`ecdsa-sha2-nistp256` 或 `ssh-ed25519` 等明文字串，一鍵複製使用。
-- **自訂一鍵常用腳本與即時注入**：
-  - 主畫面新增 **「📜 常用腳本」** 管理彈窗，提供視覺化新增與刪除自訂腳本（如系統更新、Docker 狀態檢視等）。
-  - **一鍵終端機注入**：當您在 SSH 連線中，點擊頂部 **「📜 常用腳本...」** 下拉選單，對應的指令將即時輸入到您的終端中並自動送出執行。
-  - **明文儲存**：常用腳本指令在 KV 中以純文字 JSON 格式儲存，便於您在 Cloudflare 後台直接檢視。
-- **免延遲樂觀更新機制 (Optimistic UI Updates)**：
-  - 由於 Cloudflare KV 的寫入具有「最終一致性」的延遲（寫入後通常需要 1~3 秒才會在全球節點生效），原先新增腳本後可能無法立刻在畫面上重新整理出來。
-  - 本專案實作了**樂觀更新技術**：前端在內存中維護最新的腳本快取，新增/刪除時會在 0 毫秒內立刻反應在介面上，背景則由異步靜默向後端 KV 進行儲存，帶來極速、無延遲的流暢體驗。
-- **原生 HTML5 卡片拖曳排序**：
-  - 主畫面的伺服器卡片具備拖拽手把（右上角三橫線圖示），滑鼠指過去會自動變更為抓取手勢（`cursor-grab`）。
-  - **拖拽與保存**：您可以隨意拖動卡片重新排序，落點處會具備高亮邊框指示。當放開滑鼠時，新順序陣列會自動異步儲存至 KV 上的 `connections_order` 清單中，永久保存您的自訂卡片順序。
-- **優雅的系統圖示與 LOGO**：
-  - **網站 Favicon**：採用動態嵌入的 SVG Data-URI 技術，完美替換分頁標籤上的地球預設圖標。
-  - **主視覺 LOGO**：主畫面與登入介面皆整合了極具現代感的終端機游標圖示（`>_`）。
-- **優化的 xterm.js 終端**：
-  - **自動聚焦 (Auto Focus)**：連線載入完成後自動鎖定焦點，無需手動用滑鼠點擊即可直接開始打字輸入。
-  - **視窗尺寸動態同步**：支援瀏覽器視窗縮放時，自動向遠端虛擬終端（Pseudo-terminal, PTY）發送 `resize` 訊號。
-- **Cloudflare Workers 專屬相容性適配**：
-  - 針對 Workers 執行環境底層 BoringSSL 在計算 **X25519 DH 共享金鑰** 時的限制，主動排除 `curve25519` 相關的金鑰交換演算法（KEX），改用 NIST 標準曲線（如 `ecdh-sha2-nistp256`）或有限域 Diffie-Hellman 演算法進行握手。
-  - 針對 Workers 的 `node:crypto` 串流解密不完整支援 AEAD 模式（如 `chacha20-poly1305`、`aes-gcm`）而會拋出 `No auth tag provided` 的限制，主動在握手階段限制僅協商使用 **CTR 計數器模式** 與 **CBC 模式**（如 `aes256-ctr`），配合獨立的 HMAC 校驗（如 `hmac-sha2-256`），確保資料傳輸穩定不中斷。
-
-## 📁 專案目錄結構
-
-```text
-cf-webssh/
-├── wrangler.toml              # Cloudflare Wrangler 配置文件
-├── package.json               # 項目與套件依賴配置
-├── build.mjs                  # esbuild 自訂構建與打包指令碼 (含解耦與自動版號注入插件)
-├── mocks/
-│   └── cpu-features.js        # cpu-features 機制模擬器
-├── public/
-│   ├── index.html             # 前台純淨 HTML 排版模版
-│   └── app.js                 # 獨立的前台 JavaScript 核心控制器
-└── src/
-    ├── crypto.js              # 獨立的對稱加密模組 (AES-GCM-256)
-    ├── ssh.js                 # 獨立的 SSH 終端通訊模組
-    ├── sftp.js                # 獨立的 SFTP 管理通訊模組
-    └── index.js               # 主入口路由分發與資產服務器
-```
-
-## ⚙️ 系統需求
-
-- [Cloudflare 帳戶](https://dash.cloudflare.com/)
-- [Node.js](https://nodejs.org/) (建議使用 v18.0.0 以上之版本)
-
-## 🚀 部署指南
-
-### 方法 A：透過 GitHub Actions 自動部署（推薦）
-
-本專案已內建完整的 CI/CD 自動化工作流。當您將專案推送到 GitHub 的 `main` 分支時，系統將會**全自動處理 KV 命名空間**：
-
-1. **fork 本項目**。
-2. 在 GitHub 專案的 `Settings -> Secrets and variables -> Actions` 中，新增一個名為 `CLOUDFLARE_API_TOKEN` 的 Secret（此 Token 需具備編輯 Workers 與 KV 命名空間的權限）。
-3. 將代碼推送至 `main` 分支。
-4. GitHub Actions 工作流（`.github/workflows/deploy.yml`）會自動偵測您的 Cloudflare 帳戶中是否已存在 `WEBSSH_KV` 命名空間。若不存在，將自動為您建立，並**自動動態填入** `wrangler.toml` 中的 `KV_NAMESPACE_ID_PLACEHOLDER`，最後完成編譯與部署。您無需進行任何手動文件修改。
-
-> 💡 **如何在使用 GitHub Actions 部署時設置登入密碼與 AES 加密金鑰？**
-> 請直接登入 [Cloudflare Dashboard](https://dash.cloudflare.com/)，進入您的 Workers 項目，點選 `Settings` -> `Variables` -> `Environment Variables`，手動新增變數 `ADMIN_PASSWORD`。為了安全起見，請務必將其儲存類型設為 **Encrypt (Secret)**。此密碼一經儲存，除了用於登入外，還會自動在後端作為 AES-GCM 金鑰。
-
----
-
-### 方法 B：從本機手動部署
-
-如果您不使用 GitHub Actions，而是選擇直接從本機進行手動部署：
-
-1. **安裝專案依賴**
-   ```bash
-   npm install
-   ```
-
-2. **手動建立 KV 命名空間並配置 `wrangler.toml`**
-   在本機終端機執行以下 Wrangler 指令來建立 KV 空間：
-   ```bash
-   npx wrangler kv namespace create WEBSSH_KV
-   ```
-   請將此段配置手動複製並替換掉您專案根目錄下 `wrangler.toml` 檔案內原本的預留欄位。
-
-3. **設定登入密碼（選填）**
-   推薦直接使用安全命令建立加密密碼，避免將明文密碼寫入代碼：
-   ```bash
-   npx wrangler secret put ADMIN_PASSWORD
-   ```
-   *（根據提示輸入您的安全密碼即可，此操作會將密碼直接以加密 Secret 格式上傳至 Cloudflare 端）*
-
-4. **打包編譯與部署**
-   執行以下指令，系統會透過 `esbuild` 排除不相容的原生 binary 模組（並套用 `cpu-features` 模擬檔），隨後將程式碼發佈至 Cloudflare：
-   ```bash
-   npm run deploy
-   ```
-
-## 🛡️ Cloudflare Zero Trust (Access) 安全加固詳細教學
-
-若要實現企業級的邊緣安全防護，極力建議您使用 Cloudflare 的 **Zero Trust (Access)** 來保護您的 WebSSH 專案。這能在外部請求觸發 Workers 與 KV 資料庫之前，強制對其進行一線身分驗證。
-
-### 📌 前提條件
-1. 您在 Cloudflare 上擁有一個已啟用的自訂網域（例如 `yourdomain.com`）。
-2. 已為此 Workers 綁定了自訂網域（在 Workers 控制台 -> `Settings` -> `Domains & Routes` -> `Add` -> 綁定如 `ssh.yourdomain.com`）。
-
-### 🛠️ 步驟 1：開啟 Zero Trust 控制台
-1. 登入 [Cloudflare 控制面板](https://dash.cloudflare.com/)。
-2. 在左側選單中，點擊 **「Zero Trust」**（若第一次進入，請按指示啟用免費訂閱計劃，支援最多 50 名使用者免費）。
-
-### 🛠️ 步驟 2：建立 Access 應用程式
-1. 在 Zero Trust 控制台左側選單，依序點擊 **「Access」** -> **「Applications」**。
-2. 點擊右上角的 **「Add an Application」（新增應用程式）**。
-3. 選擇 **「Self-hosted」（自我託管）** 類型。
-
-### 🛠️ 步驟 3：配置應用程式路徑
-1. **Application Name**：自訂一個名稱（如 `WebSSH Panel`）。
-2. **Session Duration**：保持預設，或自訂登入狀態有效期限。
-3. **Application Domain**（核心步驟）：
-   * **Subdomain**：輸入您的子網域（如 `ssh`）。
-   * **Domain**：選取您的自訂網域（如 `yourdomain.com`）。
-   * **Path**：保留空白即可（意即保護此子網域下的所有路徑，如 `ssh.yourdomain.com/*`）。
-4. 滾動到下方，點擊 **「Next」**。
-
-### 🛠️ 步驟 4：設定存取驗證策略 (Access Policy)
-1. **Policy Name**：自訂策略名稱（如 `限本人登入`）。
-2. **Action**：選擇 `Allow`。
-3. **Configure Rules (Include)**（設定允許的對象）：
-   * **Selector**：專區選取 **「Emails」**。
-   * **Value**：輸入您個人的 Email 電子郵件（例如 `yourname@gmail.com`）。
-4. 點擊 **「Next」**。
-
-### 🛠️ 步驟 5：設定 cookie 與完成
-1. 在最後一個「Setup」頁面，保持預設值不變。
-2. 點擊右下角的 **「Add Application」** 保存。
-
----
-
-### 🎉 防護效果測試
-現在，不論是您自己或是任何外部使用者，在瀏覽器輸入 `https://ssh.yourdomain.com` 時，都會自動跳轉至 **Cloudflare Access 安全登入頁面**，要求輸入電子郵件：
-1. 輸入您的 Email，Cloudflare 將發送一個 **一次性動態密碼 (OTP)** 至您的信箱。
-2. 輸入 OTP 通過驗證後，網頁才會順利載入您的 WebSSH 專案。
-3. **這是在網際網路最前線（邊緣節點）攔截惡意流量的安全防禦手段！**
-
-## 📝 關於 Cloudflare 網頁編輯器的「紅字錯誤」提示說明
-
-當您打開 Cloudflare Workers 網頁控制台的 **「Quick Edit（快速編輯）」** 線上代碼編輯器時，可能會在 `index.js`（即上傳的打包檔，約 22,000 行）看見數百個紅色或黃色的型別錯誤提示（例如：`Cannot find name 'Buffer'` 或 `Property 'performance' does not exist`）。
-
-* **原因**：控制台網頁編輯器底層使用的是簡化版的 Monaco 靜態檢查器。當它嘗試型別分析這份包含了 `ssh2` 與 Node.js 相容層（Polyfills）的超大型編譯產物時，會因為看不懂 Node.js 原生 API 而報錯。
-* **解決與影響**：這**完全不影響代碼的實際運行**，僅僅是線上編輯器前端的顯示充擾。本專案已在編譯腳本 `build.mjs` 中自動將 `// @ts-nocheck` 寫入檔案頂端。如果您在網頁編輯器中仍看見紅字，請**手動重新整理網頁編輯器分頁 (Ctrl + F5)** 以清除瀏覽器的檔案快取，紅字與驚嘆號便會隨之清除。
-
-## 🔒 安全性建議
-
-1. **啟用內建密碼**：強烈建議在生產環境中設定 `ADMIN_PASSWORD` 加密 Secret，這將同時啟用網頁門禁與後端 AES-GCM 零知識加密儲存。
-2. **Cloudflare Zero Trust / Cloudflare Access (雙重保障)**：
-   對於極高安全要求的用戶，除了設定 `ADMIN_PASSWORD`，還可以依據上方的 **Zero Trust 教學** 為專案網域設定一條 Access 存取策略，限定僅允許您信任的電子郵件才能存取本 WebSSH 頁面。
+[vars]
+# ==========================================
+# 管理登入密碼（選填）
+# ==========================================
+# 若留空或註解此行，系統將不啟用登入頁面，任何人皆能讀取/連線您的伺服器。
+#
+# 建議生產環境保護：
+# 本地測試時可於此處直接填寫明文密碼，
+# 但發佈至生產環境時，強烈建議不要寫入此toml檔，
+# 而是直接在網頁控制台設定「Secret」或使用命令：
+# $ npx wrangler secret put ADMIN_PASSWORD
+# ==========================================
+# ADMIN_PASSWORD = "your_secure_password"
 
 ````
 
-## File: src/ssh.js
-````js
-import { Client } from 'ssh2';
+## File: .github/workflows/combine-code.yml
+````yml
+name: Generate All Codebase to MD
 
-export async function handleSSHUpgrade(request, env, config, isAuthEnabled, adminPassword, deriveKey, decryptText) {
-  // 解密全部連線主機配置
-  let finalHost = config.host || '';
-  let finalPort = config.port || 22;
-  let finalUsername = config.username || '';
-  let finalPassword = config.password || '';
-  let finalPrivateKey = config.privateKey || '';
-  
-  if (isAuthEnabled) {
-    try {
-      const aesKey = await deriveKey(adminPassword);
-      finalHost = await decryptText(config.host, aesKey);
-      const decPortStr = await decryptText(config.port, aesKey);
-      finalPort = parseInt(decPortStr) || 22;
-      finalUsername = await decryptText(config.username, aesKey);
-      finalPassword = await decryptText(config.password, aesKey);
-      finalPrivateKey = await decryptText(config.privateKey, aesKey);
-    } catch (err) {
-      const [client, server] = Object.values(new WebSocketPair());
-      server.accept();
-      server.send(`\r\n[CF-WebSSH 憑據解密錯誤]: ${err.message}\r\n`);
-      server.close(1011);
-      return new Response(null, { status: 101, webSocket: client });
-    }
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'combined_project_code.md' # 避免此檔案自身更新引發無限循環
+  workflow_dispatch: # 支援在 GitHub 網頁上手動觸發執行
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Combine All Files into MD
+        run: |
+          OUT_FILE="combined_project_code.md"
+          echo "# Complete Project Codebase" > "$OUT_FILE"
+          echo "Generated on: $(date)" >> "$OUT_FILE"
+          echo "" >> "$OUT_FILE"
+
+          # 遍歷專案內的所有檔案，排除依賴、Git 歷史、打包產物及二進位檔案
+          find . -type f \
+            -not -path "*/node_modules/*" \
+            -not -path "*/.git/*" \
+            -not -path "*/dist/*" \
+            -not -name "package-lock.json" \
+            -not -name "yarn.lock" \
+            -not -name "pnpm-lock.yaml" \
+            -not -name "$OUT_FILE" \
+            -not -name "*.png" \
+            -not -name "*.jpg" \
+            -not -name "*.jpeg" \
+            -not -name "*.gif" \
+            -not -name "*.ico" \
+            -not -name "*.woff*" \
+            -not -name "*.ttf" | while read -r file; do
+              
+              # 取得相對路徑與副檔名
+              rel_path="${file#./}"
+              ext="${file##*.}"
+              
+              # 如果無副檔名，清除變數避免格式混亂
+              if [ "$ext" = "$rel_path" ]; then
+                ext=""
+              fi
+              
+              # 寫入檔案標題
+              echo "## File: $rel_path" >> "$OUT_FILE"
+              # 使用四個反單引號（````）包裹，防止內部程式碼的三個反單引號造成排版衝突
+              echo "\`\`\`\`$ext" >> "$OUT_FILE"
+              cat "$file" >> "$OUT_FILE"
+              echo "" >> "$OUT_FILE"
+              echo "\`\`\`\`" >> "$OUT_FILE"
+              echo "" >> "$OUT_FILE"
+          done
+
+      - name: Commit and Push changes
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add combined_project_code.md
+          
+          if git diff --staged --quiet; then
+            echo "No changes in codebase."
+          else
+            git commit -m "docs: auto-generate complete codebase [skip ci]"
+            git push origin main
+          fi
+
+````
+
+## File: .github/workflows/deploy.yml
+````yml
+name: Deploy to Cloudflare Workers
+
+on:
+  push:
+    branches:
+      - main # 當代碼推送到 main 分支時觸發自動部署
+  workflow_dispatch: # 支援在 GitHub 網頁上手動點擊觸發部署
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24 # 使用 Node 24 避免棄用警告
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Auto-detect or Create KV Namespace
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          echo "正在偵測 Cloudflare KV 命名空間..."
+          
+          # 1. 取得現有的 KV 列表 (將輸出重新導向以確保資訊安全)
+          KV_LIST=$(npx wrangler kv namespace list 2>/dev/null)
+          
+          # 2. 篩選名稱中是否已存在包含 WEBSSH_KV 的 KV ID
+          KV_ID=$(echo "$KV_LIST" | jq -r '.[] | select(.title | contains("WEBSSH_KV")) | .id' | head -n 1)
+          
+          # 3. 如果不存在，則自動建立一個
+          if [ -z "$KV_ID" ] || [ "$KV_ID" = "null" ]; then
+            echo "未偵測到 WEBSSH_KV 命名空間，正在自動為您建立..."
+            # 建立新的命名空間並隱藏詳細輸出
+            npx wrangler kv namespace create WEBSSH_KV >/dev/null
+            
+            # 重新獲取新建後的列表並擷取 ID
+            KV_LIST_NEW=$(npx wrangler kv namespace list 2>/dev/null)
+            KV_ID=$(echo "$KV_LIST_NEW" | jq -r '.[] | select(.title | contains("WEBSSH_KV")) | .id' | head -n 1)
+          else
+            echo "已成功偵測到現有的 KV 命名空間，正在進行綁定..."
+          fi
+          
+          # 4. 安全檢查
+          if [ -z "$KV_ID" ] || [ "$KV_ID" = "null" ]; then
+            echo "錯誤：無法取得或建立 KV 命名空間。"
+            exit 1
+          fi
+          
+          # 5. 動態將取得的 KV ID 替換寫入 wrangler.toml (但不輸出內容至 log)
+          sed -i "s/KV_NAMESPACE_ID_PLACEHOLDER/$KV_ID/g" wrangler.toml
+          echo "KV 綁定已設定完成。"
+
+      - name: Deploy to Cloudflare
+        run: npm run deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+````
+
+## File: package.json
+````json
+{
+  "name": "cf-webssh",
+  "version": "2.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "dependencies": {
+    "ssh2": "^1.15.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.20.0",
+    "wrangler": "^3.50.0"
   }
-
-  const [client, server] = Object.values(new WebSocketPair());
-  server.accept();
-
-  const sshClient = new Client();
-  let sshStream = null;
-  let pendingResize = null;
-
-  sshClient.on('ready', () => {
-    server.send('\r\n[SSH] 已連線，正在啟動終端...\r\n');
-    
-    const initialCols = pendingResize ? pendingResize.cols : 80;
-    const initialRows = pendingResize ? pendingResize.rows : 24;
-
-    sshClient.shell({ term: 'xterm-256color', cols: initialCols, rows: initialRows }, (err, stream) => {
-      if (err) {
-        server.send(`\r\n[SSH Shell 啟動失敗]: ${err.message}\r\n`);
-        server.close(1011);
-        sshClient.end();
-        return;
-      }
-      sshStream = stream;
-      server.send('\r\n[SSH] 終端已就緒\r\n');
-
-      stream.on('data', (data) => {
-        try {
-          server.send(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
-        } catch (e) {
-          server.send(String(data));
-        }
-      });
-
-      if (stream.stderr) {
-        stream.stderr.on('data', (data) => {
-          try {
-            server.send(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
-          } catch (e) {
-            server.send(String(data));
-          }
-        });
-      }
-
-      stream.on('close', () => {
-        server.close();
-        sshClient.end();
-      });
-
-      stream.on('error', (err) => {
-        server.send(`\r\n[Stream Error]: ${err.message}\r\n`);
-      });
-    });
-  });
-
-  sshClient.on('error', (err) => {
-    server.send(`\r\n[SSH 錯誤]: ${err.message}\r\n`);
-    server.close(1011);
-  });
-
-  sshClient.on('close', () => {
-    server.close();
-  });
-
-  sshClient.on('keyboard-interactive', (name, instructions, lang, prompts, finish) => {
-    finish([finalPassword]);
-  });
-
-  server.addEventListener('message', (event) => {
-    try {
-      const msg = JSON.parse(event.data);
-      if (msg.type === 'resize') {
-        if (sshStream) {
-          sshStream.setWindow(msg.rows, msg.cols);
-        } else {
-          pendingResize = { rows: msg.rows, cols: msg.cols };
-        }
-      } else if (msg.type === 'data' && sshStream) {
-        sshStream.write(msg.data);
-      }
-    } catch (e) {
-      if (sshStream) {
-        sshStream.write(event.data);
-      }
-    }
-  });
-
-  server.addEventListener('close', () => {
-    sshClient.end();
-  });
-
-  try {
-    const connectOptions = {
-      host: finalHost,
-      port: finalPort,
-      username: finalUsername,
-      readyTimeout: 30000,
-      keepaliveInterval: 15000,
-      keepaliveCountMax: 3,
-      tryKeyboard: true,
-      algorithms: {
-        kex: [
-          'ecdh-sha2-nistp256',
-          'ecdh-sha2-nistp384',
-          'ecdh-sha2-nistp521',
-          'diffie-hellman-group14-sha256',
-          'diffie-hellman-group16-sha512',
-          'diffie-hellman-group-exchange-sha256'
-        ],
-        cipher: [
-          'aes128-ctr',
-          'aes192-ctr',
-          'aes256-ctr',
-          'aes128-cbc',
-          'aes192-cbc',
-          'aes256-cbc'
-        ]
-      }
-    };
-
-    if (finalPrivateKey) {
-      connectOptions.privateKey = finalPrivateKey;
-    } else {
-      connectOptions.password = finalPassword;
-    }
-
-    sshClient.connect(connectOptions);
-  } catch (err) {
-    server.send(`\r\n[SSH 初始化錯誤]: ${err.message}\r\n`);
-    server.close(1011);
-  }
-
-  return new Response(null, {
-    status: 101,
-    webSocket: client,
-  });
 }
 
 ````
@@ -1012,6 +858,173 @@ export async function handleSFTPUpgrade(request, env, config, isAuthEnabled, adm
 
 ````
 
+## File: src/ssh.js
+````js
+import { Client } from 'ssh2';
+
+export async function handleSSHUpgrade(request, env, config, isAuthEnabled, adminPassword, deriveKey, decryptText) {
+  // 解密全部連線主機配置
+  let finalHost = config.host || '';
+  let finalPort = config.port || 22;
+  let finalUsername = config.username || '';
+  let finalPassword = config.password || '';
+  let finalPrivateKey = config.privateKey || '';
+  
+  if (isAuthEnabled) {
+    try {
+      const aesKey = await deriveKey(adminPassword);
+      finalHost = await decryptText(config.host, aesKey);
+      const decPortStr = await decryptText(config.port, aesKey);
+      finalPort = parseInt(decPortStr) || 22;
+      finalUsername = await decryptText(config.username, aesKey);
+      finalPassword = await decryptText(config.password, aesKey);
+      finalPrivateKey = await decryptText(config.privateKey, aesKey);
+    } catch (err) {
+      const [client, server] = Object.values(new WebSocketPair());
+      server.accept();
+      server.send(`\r\n[CF-WebSSH 憑據解密錯誤]: ${err.message}\r\n`);
+      server.close(1011);
+      return new Response(null, { status: 101, webSocket: client });
+    }
+  }
+
+  const [client, server] = Object.values(new WebSocketPair());
+  server.accept();
+
+  const sshClient = new Client();
+  let sshStream = null;
+  let pendingResize = null;
+
+  sshClient.on('ready', () => {
+    server.send('\r\n[SSH] 已連線，正在啟動終端...\r\n');
+    
+    const initialCols = pendingResize ? pendingResize.cols : 80;
+    const initialRows = pendingResize ? pendingResize.rows : 24;
+
+    sshClient.shell({ term: 'xterm-256color', cols: initialCols, rows: initialRows }, (err, stream) => {
+      if (err) {
+        server.send(`\r\n[SSH Shell 啟動失敗]: ${err.message}\r\n`);
+        server.close(1011);
+        sshClient.end();
+        return;
+      }
+      sshStream = stream;
+      server.send('\r\n[SSH] 終端已就緒\r\n');
+
+      stream.on('data', (data) => {
+        try {
+          server.send(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+        } catch (e) {
+          server.send(String(data));
+        }
+      });
+
+      if (stream.stderr) {
+        stream.stderr.on('data', (data) => {
+          try {
+            server.send(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+          } catch (e) {
+            server.send(String(data));
+          }
+        });
+      }
+
+      stream.on('close', () => {
+        server.close();
+        sshClient.end();
+      });
+
+      stream.on('error', (err) => {
+        server.send(`\r\n[Stream Error]: ${err.message}\r\n`);
+      });
+    });
+  });
+
+  sshClient.on('error', (err) => {
+    server.send(`\r\n[SSH 錯誤]: ${err.message}\r\n`);
+    server.close(1011);
+  });
+
+  sshClient.on('close', () => {
+    server.close();
+  });
+
+  sshClient.on('keyboard-interactive', (name, instructions, lang, prompts, finish) => {
+    finish([finalPassword]);
+  });
+
+  server.addEventListener('message', (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      if (msg.type === 'resize') {
+        if (sshStream) {
+          sshStream.setWindow(msg.rows, msg.cols);
+        } else {
+          pendingResize = { rows: msg.rows, cols: msg.cols };
+        }
+      } else if (msg.type === 'data' && sshStream) {
+        sshStream.write(msg.data);
+      }
+    } catch (e) {
+      if (sshStream) {
+        sshStream.write(event.data);
+      }
+    }
+  });
+
+  server.addEventListener('close', () => {
+    sshClient.end();
+  });
+
+  try {
+    const connectOptions = {
+      host: finalHost,
+      port: finalPort,
+      username: finalUsername,
+      readyTimeout: 30000,
+      keepaliveInterval: 15000,
+      keepaliveCountMax: 3,
+      tryKeyboard: true,
+      algorithms: {
+        kex: [
+          'ecdh-sha2-nistp256',
+          'ecdh-sha2-nistp384',
+          'ecdh-sha2-nistp521',
+          'diffie-hellman-group14-sha256',
+          'diffie-hellman-group16-sha512',
+          'diffie-hellman-group-exchange-sha256'
+        ],
+        cipher: [
+          'aes128-ctr',
+          'aes192-ctr',
+          'aes256-ctr',
+          'aes128-cbc',
+          'aes192-cbc',
+          'aes256-cbc'
+        ]
+      }
+    };
+
+    if (finalPrivateKey) {
+      connectOptions.privateKey = finalPrivateKey;
+    } else {
+      connectOptions.password = finalPassword;
+    }
+
+    sshClient.connect(connectOptions);
+  } catch (err) {
+    server.send(`\r\n[SSH 初始化錯誤]: ${err.message}\r\n`);
+    server.close(1011);
+  }
+
+  return new Response(null, {
+    status: 101,
+    webSocket: client,
+  });
+}
+
+````
+
 ## File: src/crypto.js
 ````js
 // 堆疊安全的 ArrayBuffer 轉 Base64 函數 (防範大檔案私鑰溢位)
@@ -1102,32 +1115,223 @@ export async function getExpectedToken(adminPassword) {
   return await hashPassword(adminPassword + "cf-webssh-salt-2026");
 }
 
+// 🆕 建立臨時快速連線 Token (AES-GCM 加密，不寫入 KV 資料庫)
+export async function createQuickConnectToken(configData, adminPassword, isAuthEnabled) {
+  const jsonStr = JSON.stringify({
+    host: configData.host || '',
+    port: parseInt(configData.port) || 22,
+    username: configData.username || '',
+    password: configData.password || '',
+    privateKey: configData.privateKey || '',
+    ts: Date.now()
+  });
+  const secret = isAuthEnabled ? adminPassword : "cf-webssh-quick-connect-salt-2026";
+  const key = await deriveKey(secret);
+  const encrypted = await encryptText(jsonStr, key);
+  return `temp:${encrypted}`;
+}
+
+// 🆕 解析與解密臨時快速連線 Token
+export async function parseQuickConnectToken(token, adminPassword, isAuthEnabled) {
+  if (!token || !token.startsWith('temp:')) return null;
+  const encryptedStr = token.substring(5);
+  const secret = isAuthEnabled ? adminPassword : "cf-webssh-quick-connect-salt-2026";
+  const key = await deriveKey(secret);
+  const decrypted = await decryptText(encryptedStr, key);
+  const data = JSON.parse(decrypted);
+  
+  // 24 小時有效期限檢查
+  if (Date.now() - data.ts > 86400000) {
+    throw new Error("快速連線 Token 已過期");
+  }
+  data.isPlaintext = true; // 標記此配置已為解密後的明文
+  return data;
+}
+
 ````
 
-## File: wrangler.toml
-````toml
-name = "cf-webssh"
-main = "dist/index.js"
-compatibility_date = "2026-01-01"
-compatibility_flags = [ "nodejs_compat" ]
+## File: build.mjs
+````mjs
+import * as esbuild from 'esbuild';
+import { readFileSync } from 'node:fs'; // 🆕 引入原生存取模組 (修改處)
 
-[[kv_namespaces]]
-binding = "WEBSSH_KV"
-id = "KV_NAMESPACE_ID_PLACEHOLDER"
+// 🆕 自動讀取 package.json 中的專案版本號 (修改處)
+const pkg = JSON.parse(readFileSync('./package.json', 'utf8'));
+const version = pkg.version || '1.0.0';
 
-[vars]
-# ==========================================
-# 管理登入密碼（選填）
-# ==========================================
-# 若留空或註解此行，系統將不啟用登入頁面，任何人皆能讀取/連線您的伺服器。
-#
-# 建議生產環境保護：
-# 本地測試時可於此處直接填寫明文密碼，
-# 但發佈至生產環境時，強烈建議不要寫入此toml檔，
-# 而是直接在網頁控制台設定「Secret」或使用命令：
-# $ npx wrangler secret put ADMIN_PASSWORD
-# ==========================================
-# ADMIN_PASSWORD = "your_secure_password"
+// 定義所有 Node.js 的內建核心模組名稱
+const nodeBuiltins = [
+  'assert', 'buffer', 'child_process', 'cluster', 'console', 'constants', 
+  'crypto', 'dgram', 'dns', 'domain', 'events', 'fs', 'http', 'http2', 
+  'https', 'inspector', 'module', 'net', 'os', 'path', 'perf_hooks', 
+  'process', 'punycode', 'querystring', 'readline', 'repl', 'stream', 
+  'string_decoder', 'sys', 'timers', 'tls', 'trace_events', 'tty', 
+  'url', 'util', 'v8', 'vm', 'wasi', 'worker_threads', 'zlib'
+];
+
+// 建立一個 esbuild 插件，用來忽略二進位原生模組 (.node 檔案)
+const ignoreNodeExtensionsPlugin = {
+  name: 'ignore-node-extensions',
+  setup(build) {
+    build.onResolve({ filter: /\.node$/ }, args => ({
+      path: args.path,
+      namespace: 'ignore-node-extensions-namespace',
+    }));
+
+    build.onLoad({ filter: /.*/, namespace: 'ignore-node-extensions-namespace' }, () => ({
+      contents: 'module.exports = {};',
+      loader: 'js',
+    }));
+  },
+};
+
+// 建立一個自訂的 esbuild 插件，專用來將 public/app.js 讀取為靜態字串
+const clientJsLoaderPlugin = {
+  name: 'client-js-loader',
+  setup(build) {
+    build.onResolve({ filter: /^client-js:/ }, async args => {
+      const path = await import('node:path');
+      const cleanPath = args.path.replace(/^client-js:/, '');
+      const absPath = path.resolve(args.resolveDir, cleanPath);
+      return {
+        path: absPath,
+        namespace: 'client-js-namespace',
+      };
+    });
+    build.onLoad({ filter: /.*/, namespace: 'client-js-namespace' }, async args => {
+      const fs = await import('node:fs/promises');
+      const content = await fs.readFile(args.path, 'utf8');
+      return {
+        contents: `export default ${JSON.stringify(content)};`,
+        loader: 'js',
+      };
+    });
+  },
+};
+
+// 撰寫具備高度診斷與防禦機制的 Banner 代碼
+const bannerJs = `// @ts-nocheck
+import { createRequire } from 'node:module';
+const __filename = 'index.js';
+const __dirname = '/';
+const _origRequire = createRequire(import.meta.url || 'file:///index.js');
+const require = (name) => {
+  const nodeBuiltins = ['assert', 'buffer', 'child_process', 'cluster', 'console', 'constants', 'crypto', 'dgram', 'dns', 'domain', 'events', 'fs', 'http', 'http2', 'https', 'inspector', 'module', 'net', 'os', 'path', 'perf_hooks', 'process', 'punycode', 'querystring', 'readline', 'repl', 'stream', 'string_decoder', 'sys', 'timers', 'tls', 'trace_events', 'tty', 'url', 'util', 'v8', 'vm', 'wasi', 'worker_threads', 'zlib'];
+  
+  if (name === 'child_process' || name === 'node:child_process') {
+    return { spawn: () => {}, exec: () => {}, execFile: () => {}, fork: () => {} };
+  }
+
+  let res;
+  try {
+    res = _origRequire(name);
+  } catch (err) {
+    try {
+      res = _origRequire('node:' + name);
+    } catch (err2) {
+      return new Proxy({}, {
+        get: (t, p) => {
+          if (p === 'then') return undefined;
+          if (p === 'hasOwnProperty') return () => false;
+          return () => {};
+        }
+      });
+    }
+  }
+
+  if (typeof res === 'function') {
+    return res;
+  }
+
+  if (res && typeof res === 'object') {
+    const hasProto = (Object.getPrototypeOf(res) !== null);
+
+    if (hasProto) {
+      return res;
+    }
+
+    const ns = res;
+    const baseName = name.replace(/^node:/, '');
+    let ctor = null;
+
+    if (typeof ns.default === 'function') {
+      ctor = ns.default;
+    } else if (typeof ns[baseName] === 'function') {
+      ctor = ns[baseName];
+    } else {
+      const pascal = baseName.charAt(0).toUpperCase() + baseName.slice(1);
+      if (typeof ns[pascal] === 'function') ctor = ns[pascal];
+    }
+
+    if (ctor) {
+      for (const key of Object.getOwnPropertyNames(ns)) {
+        if (key !== 'default' && key !== '__esModule' && !(key in ctor)) {
+          try { ctor[key] = ns[key]; } catch(e) {}
+        }
+      }
+      if (typeof ctor.hasOwnProperty !== 'function') {
+        ctor.hasOwnProperty = Object.prototype.hasOwnProperty.bind(ctor);
+      }
+      return ctor;
+    }
+
+    const wrapper = function() {};
+    for (const key of Object.getOwnPropertyNames(ns)) {
+      if (key !== '__esModule' && key !== 'constructor') {
+        try { wrapper[key] = ns[key]; } catch(e) {}
+      }
+    }
+    if (typeof wrapper.hasOwnProperty !== 'function') {
+      wrapper.hasOwnProperty = Object.prototype.hasOwnProperty.bind(wrapper);
+    }
+    return wrapper;
+  }
+
+  return res;
+};`;
+
+try {
+  await esbuild.build({
+    entryPoints: ['src/index.js'],
+    bundle: true,
+    outfile: 'dist/index.js',
+    format: 'esm',
+    target: 'es2022',
+    platform: 'browser', 
+    external: [
+      'cloudflare:sockets',
+      ...nodeBuiltins,
+      ...nodeBuiltins.map(name => `node:${name}`)
+    ],
+    banner: {
+      js: bannerJs,
+    },
+    // 🆕 注入全域變數常數，於編譯期將版本號直接寫入 (修改處)
+    define: {
+      '__APP_VERSION__': JSON.stringify(version)
+    },
+    plugins: [ignoreNodeExtensionsPlugin, clientJsLoaderPlugin], 
+    loader: {
+      '.html': 'text',
+    },
+    alias: {
+      'cpu-features': './mocks/cpu-features.js'
+    }
+  });
+  console.log('Build completed successfully.');
+} catch (error) {
+  console.error('Build failed:', error);
+  process.exit(1);
+}
+
+````
+
+## File: mocks/cpu-features.js
+````js
+// Mock cpu-features for worker build
+const mock = () => ({});
+mock.default = mock;
+export default mock;
 
 ````
 
@@ -2764,357 +2968,186 @@ function hideKeygenModal() {
 
 ````
 
-## File: mocks/cpu-features.js
-````js
-// Mock cpu-features for worker build
-const mock = () => ({});
-mock.default = mock;
-export default mock;
+## File: README.md
+````md
+# cf-webssh
 
-````
+一個基於 Cloudflare Workers 平台建置的輕量級、高度安全、完全模組化解耦的互動式 WebSSH 終端機與 SFTP 遠端檔案管理工作台。
 
-## File: package.json
-````json
-{
-  "name": "cf-webssh",
-  "version": "2.0.0",
-  "type": "module",
-  "scripts": {
-    "build": "node build.mjs",
-    "deploy": "npm run build && wrangler deploy"
-  },
-  "dependencies": {
-    "ssh2": "^1.15.0"
-  },
-  "devDependencies": {
-    "esbuild": "^0.20.0",
-    "wrangler": "^3.50.0"
-  }
-}
+本專案利用 Cloudflare 原生 TCP 接口（透過相容性標誌 `nodejs_compat` 啟用 `cloudflare:sockets`）與遠端主機建立安全的 SSH 通道，並在瀏覽器前端使用 `xterm.js` 提供互動性終端、視覺化 SFTP 檔案管理器、遠端檔案線上編輯器，以及本地安全密鑰生成器。
 
-````
+## 🎯 專案特點
 
-## File: .github/workflows/deploy.yml
-````yml
-name: Deploy to Cloudflare Workers
+- **無伺服器架構**：完全依賴 Cloudflare Workers 邊緣網路，無需部署與維護傳統的 WebSSH 後端伺服器（如 Bastion、Guacamole 等）。
+- **解耦與模組化分檔管理**：
+  - 本地開發專案採用高維護性分檔結構：安全加密（`crypto.js`）、終端通訊（`ssh.js`）、SFTP 管理（`sftp.js`）、主路由入口（`index.js`），以及前端頁面（`index.html`）與核心控制指令碼（`app.js`）。
+  - **極速載入**：在構建編譯時（`build.mjs`），透過自訂的 esbuild 插件，自動將前端 JavaScript 程式碼轉化為靜態字串併入 Worker 的部署檔中，使您的專案既具有本地開發的整潔度，又擁有極佳的邊緣端載入速度。
+- **動態版本號同步**：
+  - 主畫面標題旁與登入介面會自動展示當前的系統版本號（例如 `v2.0.0`），該版本號完全由構建指令碼在打包編譯時，自動、動態地與 `package.json` 內的 `"version"` 欄位進行實時同步。
+- **全庫零知識（Zero-Knowledge）端到端對稱加密**：
+  - 當設定管理員密碼（環境變數 `ADMIN_PASSWORD`）時，系統會自動在 Worker 記憶體中利用您的密碼雜湊衍生出 256 位元的對稱金鑰。
+  - 主機連線欄位（包括主機 IP/域名、主機名稱、端口、使用者名稱、連線密碼與私鑰）在寫入 Cloudflare KV 前，**皆全數透過原生 WebCrypto API 執行強度的 AES-GCM-256 對稱加密**。
+  - **安全性**：即便 Cloudflare 帳戶或 KV 資料庫整庫被導出洩漏，攻擊者也完全無法得知您管理的 VPS 名稱、IP 位置與登入帳密。
+  - **向下相容**：系統具備智慧判定，若偵測到未加密的舊有資料會自動以明文格式讀取，不影響您原先已儲存的配置。您只需在網頁上對舊主機點選「編輯 -> 儲存」，系統便會自動將其無損升級為加密狀態。
+- **一體化 SFTP 遠端檔案管理器**：
+  - 前端頂部整合為單一 **「📁 SFTP 檔案管理」** 彈窗視窗，可直接在終端機畫面上方彈出，體驗一體化。
+  - **📝 遠端檔案線上編輯器**：點選文字格式檔案（如 `.conf`、`.sh`、`.env`、`.json`、`.yml` 等）旁的 **「編輯」** 按鈕，右側會直接拉出一個大面積的代碼編輯器彈窗，修改後點擊「儲存變更」即可即時覆寫寫入 VPS，免去使用終端機 `vim` / `nano` 的繁瑣步驟。
+  - **「類 Windows」麵包屑導航**：自動將目前的絕對路徑分割為可點選的級聯節點（如 `🏠 / root / apps`），點選即可快速跨目錄跳轉。
+  - **檔案瀏覽與導航**：點選資料夾可直接進入，支援目錄深層導航、向上返回與重新整理。
+  - **檔案下載與完整性流控制（Backpressure）**：採用 Web 串流控制，發送一塊數據確認一塊，絕不撐爆 Worker 記憶體，支援大檔案的安全流式下載。
+  - **拖放與手動上傳**：支援將電腦檔案直接拖曳至終端機畫面上傳，或點選視窗內的「上傳檔案」手動選取，自動上傳至目前瀏覽的目錄中。
+  - **檔案刪除**：支援一鍵永久刪除遠端 VPS 上的檔案或空資料夾。
+- **內建多算法安全 SSH 密鑰生成器**：
+  - 主畫面 Header 新增獨立的 **「🔑 密鑰生成」** 彈窗。完全由瀏覽器端 WebCrypto 引擎本地生成，保證極限物理安全。
+  - **支援四種主流算法**：`ED25519` (高安全、推薦)、`RSA-2048` (高相容)、`RSA-4096` (極高安全)、`ECDSA P-256` (橢圓曲線)。
+  - **標準 OpenSSH 公鑰序列化編譯**：內建 OpenSSH 公鑰字節序列化解析器，自動將 DER 編碼編譯成可以直接寫入 Linux `authorized_keys` 的標準 `ssh-rsa`、`ecdsa-sha2-nistp256` 或 `ssh-ed25519` 等明文字串，一鍵複製使用。
+- **自訂一鍵常用腳本與即時注入**：
+  - 主畫面新增 **「📜 常用腳本」** 管理彈窗，提供視覺化新增與刪除自訂腳本（如系統更新、Docker 狀態檢視等）。
+  - **一鍵終端機注入**：當您在 SSH 連線中，點擊頂部 **「📜 常用腳本...」** 下拉選單，對應的指令將即時輸入到您的終端中並自動送出執行。
+  - **明文儲存**：常用腳本指令在 KV 中以純文字 JSON 格式儲存，便於您在 Cloudflare 後台直接檢視。
+- **免延遲樂觀更新機制 (Optimistic UI Updates)**：
+  - 由於 Cloudflare KV 的寫入具有「最終一致性」的延遲（寫入後通常需要 1~3 秒才會在全球節點生效），原先新增腳本後可能無法立刻在畫面上重新整理出來。
+  - 本專案實作了**樂觀更新技術**：前端在內存中維護最新的腳本快取，新增/刪除時會在 0 毫秒內立刻反應在介面上，背景則由異步靜默向後端 KV 進行儲存，帶來極速、無延遲的流暢體驗。
+- **原生 HTML5 卡片拖曳排序**：
+  - 主畫面的伺服器卡片具備拖拽手把（右上角三橫線圖示），滑鼠指過去會自動變更為抓取手勢（`cursor-grab`）。
+  - **拖拽與保存**：您可以隨意拖動卡片重新排序，落點處會具備高亮邊框指示。當放開滑鼠時，新順序陣列會自動異步儲存至 KV 上的 `connections_order` 清單中，永久保存您的自訂卡片順序。
+- **優雅的系統圖示與 LOGO**：
+  - **網站 Favicon**：採用動態嵌入的 SVG Data-URI 技術，完美替換分頁標籤上的地球預設圖標。
+  - **主視覺 LOGO**：主畫面與登入介面皆整合了極具現代感的終端機游標圖示（`>_`）。
+- **優化的 xterm.js 終端**：
+  - **自動聚焦 (Auto Focus)**：連線載入完成後自動鎖定焦點，無需手動用滑鼠點擊即可直接開始打字輸入。
+  - **視窗尺寸動態同步**：支援瀏覽器視窗縮放時，自動向遠端虛擬終端（Pseudo-terminal, PTY）發送 `resize` 訊號。
+- **Cloudflare Workers 專屬相容性適配**：
+  - 針對 Workers 執行環境底層 BoringSSL 在計算 **X25519 DH 共享金鑰** 時的限制，主動排除 `curve25519` 相關的金鑰交換演算法（KEX），改用 NIST 標準曲線（如 `ecdh-sha2-nistp256`）或有限域 Diffie-Hellman 演算法進行握手。
+  - 針對 Workers 的 `node:crypto` 串流解密不完整支援 AEAD 模式（如 `chacha20-poly1305`、`aes-gcm`）而會拋出 `No auth tag provided` 的限制，主動在握手階段限制僅協商使用 **CTR 計數器模式** 與 **CBC 模式**（如 `aes256-ctr`），配合獨立的 HMAC 校驗（如 `hmac-sha2-256`），確保資料傳輸穩定不中斷。
 
-on:
-  push:
-    branches:
-      - main # 當代碼推送到 main 分支時觸發自動部署
-  workflow_dispatch: # 支援在 GitHub 網頁上手動點擊觸發部署
+## 📁 專案目錄結構
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+```text
+cf-webssh/
+├── wrangler.toml              # Cloudflare Wrangler 配置文件
+├── package.json               # 項目與套件依賴配置
+├── build.mjs                  # esbuild 自訂構建與打包指令碼 (含解耦與自動版號注入插件)
+├── mocks/
+│   └── cpu-features.js        # cpu-features 機制模擬器
+├── public/
+│   ├── index.html             # 前台純淨 HTML 排版模版
+│   └── app.js                 # 獨立的前台 JavaScript 核心控制器
+└── src/
+    ├── crypto.js              # 獨立的對稱加密模組 (AES-GCM-256)
+    ├── ssh.js                 # 獨立的 SSH 終端通訊模組
+    ├── sftp.js                # 獨立的 SFTP 管理通訊模組
+    └── index.js               # 主入口路由分發與資產服務器
+```
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24 # 使用 Node 24 避免棄用警告
+## ⚙️ 系統需求
 
-      - name: Install Dependencies
-        run: npm install
+- [Cloudflare 帳戶](https://dash.cloudflare.com/)
+- [Node.js](https://nodejs.org/) (建議使用 v18.0.0 以上之版本)
 
-      - name: Auto-detect or Create KV Namespace
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: |
-          echo "正在偵測 Cloudflare KV 命名空間..."
-          
-          # 1. 取得現有的 KV 列表 (將輸出重新導向以確保資訊安全)
-          KV_LIST=$(npx wrangler kv namespace list 2>/dev/null)
-          
-          # 2. 篩選名稱中是否已存在包含 WEBSSH_KV 的 KV ID
-          KV_ID=$(echo "$KV_LIST" | jq -r '.[] | select(.title | contains("WEBSSH_KV")) | .id' | head -n 1)
-          
-          # 3. 如果不存在，則自動建立一個
-          if [ -z "$KV_ID" ] || [ "$KV_ID" = "null" ]; then
-            echo "未偵測到 WEBSSH_KV 命名空間，正在自動為您建立..."
-            # 建立新的命名空間並隱藏詳細輸出
-            npx wrangler kv namespace create WEBSSH_KV >/dev/null
-            
-            # 重新獲取新建後的列表並擷取 ID
-            KV_LIST_NEW=$(npx wrangler kv namespace list 2>/dev/null)
-            KV_ID=$(echo "$KV_LIST_NEW" | jq -r '.[] | select(.title | contains("WEBSSH_KV")) | .id' | head -n 1)
-          else
-            echo "已成功偵測到現有的 KV 命名空間，正在進行綁定..."
-          fi
-          
-          # 4. 安全檢查
-          if [ -z "$KV_ID" ] || [ "$KV_ID" = "null" ]; then
-            echo "錯誤：無法取得或建立 KV 命名空間。"
-            exit 1
-          fi
-          
-          # 5. 動態將取得的 KV ID 替換寫入 wrangler.toml (但不輸出內容至 log)
-          sed -i "s/KV_NAMESPACE_ID_PLACEHOLDER/$KV_ID/g" wrangler.toml
-          echo "KV 綁定已設定完成。"
+## 🚀 部署指南
 
-      - name: Deploy to Cloudflare
-        run: npm run deploy
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+### 方法 A：透過 GitHub Actions 自動部署（推薦）
 
-````
+本專案已內建完整的 CI/CD 自動化工作流。當您將專案推送到 GitHub 的 `main` 分支時，系統將會**全自動處理 KV 命名空間**：
 
-## File: .github/workflows/combine-code.yml
-````yml
-name: Generate All Codebase to MD
+1. **fork 本項目**。
+2. 在 GitHub 專案的 `Settings -> Secrets and variables -> Actions` 中，新增一個名為 `CLOUDFLARE_API_TOKEN` 的 Secret（此 Token 需具備編輯 Workers 與 KV 命名空間的權限）。
+3. 將代碼推送至 `main` 分支。
+4. GitHub Actions 工作流（`.github/workflows/deploy.yml`）會自動偵測您的 Cloudflare 帳戶中是否已存在 `WEBSSH_KV` 命名空間。若不存在，將自動為您建立，並**自動動態填入** `wrangler.toml` 中的 `KV_NAMESPACE_ID_PLACEHOLDER`，最後完成編譯與部署。您無需進行任何手動文件修改。
 
-on:
-  push:
-    branches:
-      - main
-    paths-ignore:
-      - 'combined_project_code.md' # 避免此檔案自身更新引發無限循環
-  workflow_dispatch: # 支援在 GitHub 網頁上手動觸發執行
+> 💡 **如何在使用 GitHub Actions 部署時設置登入密碼與 AES 加密金鑰？**
+> 請直接登入 [Cloudflare Dashboard](https://dash.cloudflare.com/)，進入您的 Workers 項目，點選 `Settings` -> `Variables` -> `Environment Variables`，手動新增變數 `ADMIN_PASSWORD`。為了安全起見，請務必將其儲存類型設為 **Encrypt (Secret)**。此密碼一經儲存，除了用於登入外，還會自動在後端作為 AES-GCM 金鑰。
 
-permissions:
-  contents: write
+---
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
+### 方法 B：從本機手動部署
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+如果您不使用 GitHub Actions，而是選擇直接從本機進行手動部署：
 
-      - name: Combine All Files into MD
-        run: |
-          OUT_FILE="combined_project_code.md"
-          echo "# Complete Project Codebase" > "$OUT_FILE"
-          echo "Generated on: $(date)" >> "$OUT_FILE"
-          echo "" >> "$OUT_FILE"
+1. **安裝專案依賴**
+   ```bash
+   npm install
+   ```
 
-          # 遍歷專案內的所有檔案，排除依賴、Git 歷史、打包產物及二進位檔案
-          find . -type f \
-            -not -path "*/node_modules/*" \
-            -not -path "*/.git/*" \
-            -not -path "*/dist/*" \
-            -not -name "package-lock.json" \
-            -not -name "yarn.lock" \
-            -not -name "pnpm-lock.yaml" \
-            -not -name "$OUT_FILE" \
-            -not -name "*.png" \
-            -not -name "*.jpg" \
-            -not -name "*.jpeg" \
-            -not -name "*.gif" \
-            -not -name "*.ico" \
-            -not -name "*.woff*" \
-            -not -name "*.ttf" | while read -r file; do
-              
-              # 取得相對路徑與副檔名
-              rel_path="${file#./}"
-              ext="${file##*.}"
-              
-              # 如果無副檔名，清除變數避免格式混亂
-              if [ "$ext" = "$rel_path" ]; then
-                ext=""
-              fi
-              
-              # 寫入檔案標題
-              echo "## File: $rel_path" >> "$OUT_FILE"
-              # 使用四個反單引號（````）包裹，防止內部程式碼的三個反單引號造成排版衝突
-              echo "\`\`\`\`$ext" >> "$OUT_FILE"
-              cat "$file" >> "$OUT_FILE"
-              echo "" >> "$OUT_FILE"
-              echo "\`\`\`\`" >> "$OUT_FILE"
-              echo "" >> "$OUT_FILE"
-          done
+2. **手動建立 KV 命名空間並配置 `wrangler.toml`**
+   在本機終端機執行以下 Wrangler 指令來建立 KV 空間：
+   ```bash
+   npx wrangler kv namespace create WEBSSH_KV
+   ```
+   請將此段配置手動複製並替換掉您專案根目錄下 `wrangler.toml` 檔案內原本的預留欄位。
 
-      - name: Commit and Push changes
-        run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          git add combined_project_code.md
-          
-          if git diff --staged --quiet; then
-            echo "No changes in codebase."
-          else
-            git commit -m "docs: auto-generate complete codebase [skip ci]"
-            git push origin main
-          fi
+3. **設定登入密碼（選填）**
+   推薦直接使用安全命令建立加密密碼，避免將明文密碼寫入代碼：
+   ```bash
+   npx wrangler secret put ADMIN_PASSWORD
+   ```
+   *（根據提示輸入您的安全密碼即可，此操作會將密碼直接以加密 Secret 格式上傳至 Cloudflare 端）*
 
-````
+4. **打包編譯與部署**
+   執行以下指令，系統會透過 `esbuild` 排除不相容的原生 binary 模組（並套用 `cpu-features` 模擬檔），隨後將程式碼發佈至 Cloudflare：
+   ```bash
+   npm run deploy
+   ```
 
-## File: build.mjs
-````mjs
-import * as esbuild from 'esbuild';
-import { readFileSync } from 'node:fs'; // 🆕 引入原生存取模組 (修改處)
+## 🛡️ Cloudflare Zero Trust (Access) 安全加固詳細教學
 
-// 🆕 自動讀取 package.json 中的專案版本號 (修改處)
-const pkg = JSON.parse(readFileSync('./package.json', 'utf8'));
-const version = pkg.version || '1.0.0';
+若要實現企業級的邊緣安全防護，極力建議您使用 Cloudflare 的 **Zero Trust (Access)** 來保護您的 WebSSH 專案。這能在外部請求觸發 Workers 與 KV 資料庫之前，強制對其進行一線身分驗證。
 
-// 定義所有 Node.js 的內建核心模組名稱
-const nodeBuiltins = [
-  'assert', 'buffer', 'child_process', 'cluster', 'console', 'constants', 
-  'crypto', 'dgram', 'dns', 'domain', 'events', 'fs', 'http', 'http2', 
-  'https', 'inspector', 'module', 'net', 'os', 'path', 'perf_hooks', 
-  'process', 'punycode', 'querystring', 'readline', 'repl', 'stream', 
-  'string_decoder', 'sys', 'timers', 'tls', 'trace_events', 'tty', 
-  'url', 'util', 'v8', 'vm', 'wasi', 'worker_threads', 'zlib'
-];
+### 📌 前提條件
+1. 您在 Cloudflare 上擁有一個已啟用的自訂網域（例如 `yourdomain.com`）。
+2. 已為此 Workers 綁定了自訂網域（在 Workers 控制台 -> `Settings` -> `Domains & Routes` -> `Add` -> 綁定如 `ssh.yourdomain.com`）。
 
-// 建立一個 esbuild 插件，用來忽略二進位原生模組 (.node 檔案)
-const ignoreNodeExtensionsPlugin = {
-  name: 'ignore-node-extensions',
-  setup(build) {
-    build.onResolve({ filter: /\.node$/ }, args => ({
-      path: args.path,
-      namespace: 'ignore-node-extensions-namespace',
-    }));
+### 🛠️ 步驟 1：開啟 Zero Trust 控制台
+1. 登入 [Cloudflare 控制面板](https://dash.cloudflare.com/)。
+2. 在左側選單中，點擊 **「Zero Trust」**（若第一次進入，請按指示啟用免費訂閱計劃，支援最多 50 名使用者免費）。
 
-    build.onLoad({ filter: /.*/, namespace: 'ignore-node-extensions-namespace' }, () => ({
-      contents: 'module.exports = {};',
-      loader: 'js',
-    }));
-  },
-};
+### 🛠️ 步驟 2：建立 Access 應用程式
+1. 在 Zero Trust 控制台左側選單，依序點擊 **「Access」** -> **「Applications」**。
+2. 點擊右上角的 **「Add an Application」（新增應用程式）**。
+3. 選擇 **「Self-hosted」（自我託管）** 類型。
 
-// 建立一個自訂的 esbuild 插件，專用來將 public/app.js 讀取為靜態字串
-const clientJsLoaderPlugin = {
-  name: 'client-js-loader',
-  setup(build) {
-    build.onResolve({ filter: /^client-js:/ }, async args => {
-      const path = await import('node:path');
-      const cleanPath = args.path.replace(/^client-js:/, '');
-      const absPath = path.resolve(args.resolveDir, cleanPath);
-      return {
-        path: absPath,
-        namespace: 'client-js-namespace',
-      };
-    });
-    build.onLoad({ filter: /.*/, namespace: 'client-js-namespace' }, async args => {
-      const fs = await import('node:fs/promises');
-      const content = await fs.readFile(args.path, 'utf8');
-      return {
-        contents: `export default ${JSON.stringify(content)};`,
-        loader: 'js',
-      };
-    });
-  },
-};
+### 🛠️ 步驟 3：配置應用程式路徑
+1. **Application Name**：自訂一個名稱（如 `WebSSH Panel`）。
+2. **Session Duration**：保持預設，或自訂登入狀態有效期限。
+3. **Application Domain**（核心步驟）：
+   * **Subdomain**：輸入您的子網域（如 `ssh`）。
+   * **Domain**：選取您的自訂網域（如 `yourdomain.com`）。
+   * **Path**：保留空白即可（意即保護此子網域下的所有路徑，如 `ssh.yourdomain.com/*`）。
+4. 滾動到下方，點擊 **「Next」**。
 
-// 撰寫具備高度診斷與防禦機制的 Banner 代碼
-const bannerJs = `// @ts-nocheck
-import { createRequire } from 'node:module';
-const __filename = 'index.js';
-const __dirname = '/';
-const _origRequire = createRequire(import.meta.url || 'file:///index.js');
-const require = (name) => {
-  const nodeBuiltins = ['assert', 'buffer', 'child_process', 'cluster', 'console', 'constants', 'crypto', 'dgram', 'dns', 'domain', 'events', 'fs', 'http', 'http2', 'https', 'inspector', 'module', 'net', 'os', 'path', 'perf_hooks', 'process', 'punycode', 'querystring', 'readline', 'repl', 'stream', 'string_decoder', 'sys', 'timers', 'tls', 'trace_events', 'tty', 'url', 'util', 'v8', 'vm', 'wasi', 'worker_threads', 'zlib'];
-  
-  if (name === 'child_process' || name === 'node:child_process') {
-    return { spawn: () => {}, exec: () => {}, execFile: () => {}, fork: () => {} };
-  }
+### 🛠️ 步驟 4：設定存取驗證策略 (Access Policy)
+1. **Policy Name**：自訂策略名稱（如 `限本人登入`）。
+2. **Action**：選擇 `Allow`。
+3. **Configure Rules (Include)**（設定允許的對象）：
+   * **Selector**：專區選取 **「Emails」**。
+   * **Value**：輸入您個人的 Email 電子郵件（例如 `yourname@gmail.com`）。
+4. 點擊 **「Next」**。
 
-  let res;
-  try {
-    res = _origRequire(name);
-  } catch (err) {
-    try {
-      res = _origRequire('node:' + name);
-    } catch (err2) {
-      return new Proxy({}, {
-        get: (t, p) => {
-          if (p === 'then') return undefined;
-          if (p === 'hasOwnProperty') return () => false;
-          return () => {};
-        }
-      });
-    }
-  }
+### 🛠️ 步驟 5：設定 cookie 與完成
+1. 在最後一個「Setup」頁面，保持預設值不變。
+2. 點擊右下角的 **「Add Application」** 保存。
 
-  if (typeof res === 'function') {
-    return res;
-  }
+---
 
-  if (res && typeof res === 'object') {
-    const hasProto = (Object.getPrototypeOf(res) !== null);
+### 🎉 防護效果測試
+現在，不論是您自己或是任何外部使用者，在瀏覽器輸入 `https://ssh.yourdomain.com` 時，都會自動跳轉至 **Cloudflare Access 安全登入頁面**，要求輸入電子郵件：
+1. 輸入您的 Email，Cloudflare 將發送一個 **一次性動態密碼 (OTP)** 至您的信箱。
+2. 輸入 OTP 通過驗證後，網頁才會順利載入您的 WebSSH 專案。
+3. **這是在網際網路最前線（邊緣節點）攔截惡意流量的安全防禦手段！**
 
-    if (hasProto) {
-      return res;
-    }
+## 📝 關於 Cloudflare 網頁編輯器的「紅字錯誤」提示說明
 
-    const ns = res;
-    const baseName = name.replace(/^node:/, '');
-    let ctor = null;
+當您打開 Cloudflare Workers 網頁控制台的 **「Quick Edit（快速編輯）」** 線上代碼編輯器時，可能會在 `index.js`（即上傳的打包檔，約 22,000 行）看見數百個紅色或黃色的型別錯誤提示（例如：`Cannot find name 'Buffer'` 或 `Property 'performance' does not exist`）。
 
-    if (typeof ns.default === 'function') {
-      ctor = ns.default;
-    } else if (typeof ns[baseName] === 'function') {
-      ctor = ns[baseName];
-    } else {
-      const pascal = baseName.charAt(0).toUpperCase() + baseName.slice(1);
-      if (typeof ns[pascal] === 'function') ctor = ns[pascal];
-    }
+* **原因**：控制台網頁編輯器底層使用的是簡化版的 Monaco 靜態檢查器。當它嘗試型別分析這份包含了 `ssh2` 與 Node.js 相容層（Polyfills）的超大型編譯產物時，會因為看不懂 Node.js 原生 API 而報錯。
+* **解決與影響**：這**完全不影響代碼的實際運行**，僅僅是線上編輯器前端的顯示充擾。本專案已在編譯腳本 `build.mjs` 中自動將 `// @ts-nocheck` 寫入檔案頂端。如果您在網頁編輯器中仍看見紅字，請**手動重新整理網頁編輯器分頁 (Ctrl + F5)** 以清除瀏覽器的檔案快取，紅字與驚嘆號便會隨之清除。
 
-    if (ctor) {
-      for (const key of Object.getOwnPropertyNames(ns)) {
-        if (key !== 'default' && key !== '__esModule' && !(key in ctor)) {
-          try { ctor[key] = ns[key]; } catch(e) {}
-        }
-      }
-      if (typeof ctor.hasOwnProperty !== 'function') {
-        ctor.hasOwnProperty = Object.prototype.hasOwnProperty.bind(ctor);
-      }
-      return ctor;
-    }
+## 🔒 安全性建議
 
-    const wrapper = function() {};
-    for (const key of Object.getOwnPropertyNames(ns)) {
-      if (key !== '__esModule' && key !== 'constructor') {
-        try { wrapper[key] = ns[key]; } catch(e) {}
-      }
-    }
-    if (typeof wrapper.hasOwnProperty !== 'function') {
-      wrapper.hasOwnProperty = Object.prototype.hasOwnProperty.bind(wrapper);
-    }
-    return wrapper;
-  }
-
-  return res;
-};`;
-
-try {
-  await esbuild.build({
-    entryPoints: ['src/index.js'],
-    bundle: true,
-    outfile: 'dist/index.js',
-    format: 'esm',
-    target: 'es2022',
-    platform: 'browser', 
-    external: [
-      'cloudflare:sockets',
-      ...nodeBuiltins,
-      ...nodeBuiltins.map(name => `node:${name}`)
-    ],
-    banner: {
-      js: bannerJs,
-    },
-    // 🆕 注入全域變數常數，於編譯期將版本號直接寫入 (修改處)
-    define: {
-      '__APP_VERSION__': JSON.stringify(version)
-    },
-    plugins: [ignoreNodeExtensionsPlugin, clientJsLoaderPlugin], 
-    loader: {
-      '.html': 'text',
-    },
-    alias: {
-      'cpu-features': './mocks/cpu-features.js'
-    }
-  });
-  console.log('Build completed successfully.');
-} catch (error) {
-  console.error('Build failed:', error);
-  process.exit(1);
-}
+1. **啟用內建密碼**：強烈建議在生產環境中設定 `ADMIN_PASSWORD` 加密 Secret，這將同時啟用網頁門禁與後端 AES-GCM 零知識加密儲存。
+2. **Cloudflare Zero Trust / Cloudflare Access (雙重保障)**：
+   對於極高安全要求的用戶，除了設定 `ADMIN_PASSWORD`，還可以依據上方的 **Zero Trust 教學** 為專案網域設定一條 Access 存取策略，限定僅允許您信任的電子郵件才能存取本 WebSSH 頁面。
 
 ````
 
