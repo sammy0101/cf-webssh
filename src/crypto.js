@@ -85,3 +85,36 @@ export async function hashPassword(password) {
 export async function getExpectedToken(adminPassword) {
   return await hashPassword(adminPassword + "cf-webssh-salt-2026");
 }
+
+// 🆕 建立臨時快速連線 Token (AES-GCM 加密，不寫入 KV 資料庫)
+export async function createQuickConnectToken(configData, adminPassword, isAuthEnabled) {
+  const jsonStr = JSON.stringify({
+    host: configData.host || '',
+    port: parseInt(configData.port) || 22,
+    username: configData.username || '',
+    password: configData.password || '',
+    privateKey: configData.privateKey || '',
+    ts: Date.now()
+  });
+  const secret = isAuthEnabled ? adminPassword : "cf-webssh-quick-connect-salt-2026";
+  const key = await deriveKey(secret);
+  const encrypted = await encryptText(jsonStr, key);
+  return `temp:${encrypted}`;
+}
+
+// 🆕 解析與解密臨時快速連線 Token
+export async function parseQuickConnectToken(token, adminPassword, isAuthEnabled) {
+  if (!token || !token.startsWith('temp:')) return null;
+  const encryptedStr = token.substring(5);
+  const secret = isAuthEnabled ? adminPassword : "cf-webssh-quick-connect-salt-2026";
+  const key = await deriveKey(secret);
+  const decrypted = await decryptText(encryptedStr, key);
+  const data = JSON.parse(decrypted);
+  
+  // 24 小時有效期限檢查
+  if (Date.now() - data.ts > 86400000) {
+    throw new Error("快速連線 Token 已過期");
+  }
+  data.isPlaintext = true; // 標記此配置已為解密後的明文
+  return data;
+}
