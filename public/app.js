@@ -259,30 +259,53 @@ async function saveConnectionsOrder() {
 }
 
 // ==========================================
-// ⚡ 快速/臨時連線 Modal 控制邏輯 (不存入 KV)
+// ⚡ 快速/臨時連線 Modal 控制邏輯 (具備防衛與診斷提示)
 // ==========================================
 function showQuickConnectModal() {
-  document.getElementById('quick-connect-form').reset();
-  document.getElementById('quick-port').value = '22';
-  document.getElementById('quick-username').value = 'root';
+  const modal = document.getElementById('quick-connect-modal');
+  if (!modal) {
+    alert('⚠️ 偵測到網頁仍在使用舊版快取！\n請按下 Ctrl + F5 (Mac: Cmd + Shift + R) 強制重新整理頁面。');
+    console.error('找不到 ID 為 quick-connect-modal 的 DOM 元素。');
+    return;
+  }
+
+  const form = document.getElementById('quick-connect-form');
+  if (form) form.reset();
+
+  const portInput = document.getElementById('quick-port');
+  if (portInput) portInput.value = '22';
+
+  const userInput = document.getElementById('quick-username');
+  if (userInput) userInput.value = 'root';
+
   toggleQuickAuthType();
-  document.getElementById('quick-connect-modal').classList.remove('hidden');
-  document.getElementById('quick-connect-modal').classList.add('flex');
+
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
 }
 
 function hideQuickConnectModal() {
-  document.getElementById('quick-connect-modal').classList.add('hidden');
-  document.getElementById('quick-connect-modal').classList.remove('flex');
+  const modal = document.getElementById('quick-connect-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
 }
 
 function toggleQuickAuthType() {
-  const type = document.getElementById('quick-auth-type').value;
+  const selectEl = document.getElementById('quick-auth-type');
+  if (!selectEl) return;
+
+  const type = selectEl.value;
+  const passField = document.getElementById('quick-password-field');
+  const keyField = document.getElementById('quick-key-field');
+
   if (type === 'password') {
-    document.getElementById('quick-password-field').classList.remove('hidden');
-    document.getElementById('quick-key-field').classList.add('hidden');
+    if (passField) passField.classList.remove('hidden');
+    if (keyField) keyField.classList.add('hidden');
   } else {
-    document.getElementById('quick-password-field').classList.add('hidden');
-    document.getElementById('quick-key-field').classList.remove('hidden');
+    if (passField) passField.classList.add('hidden');
+    if (keyField) keyField.classList.remove('hidden');
   }
 }
 
@@ -1252,11 +1275,14 @@ function connectSSH(id, name) {
   ws.binaryType = 'arraybuffer';
 
   ws.onopen = () => {
-    term.write('\r\n[CF-WebSSH]: 已成功建立通訊隧道，正在連線遠端伺服器...\r\n');
+    if (term) {
+      term.write('\r\n[CF-WebSSH]: 已成功建立通訊隧道，正在連線遠端伺服器...\r\n');
+    }
     ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
   };
 
   ws.onmessage = (event) => {
+    if (!term) return;
     if (event.data instanceof ArrayBuffer) {
       term.write(new Uint8Array(event.data));
     } else {
@@ -1265,7 +1291,9 @@ function connectSSH(id, name) {
   };
 
   ws.onclose = () => {
-    term.write('\r\n[CF-WebSSH]: 連線已中斷。\r\n');
+    if (term) {
+      term.write('\r\n[CF-WebSSH]: 連線已中斷。\r\n');
+    }
   };
 
   term.onData(data => {
