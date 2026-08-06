@@ -114,7 +114,8 @@
           </div>
           <div>
             <label class="block text-sm text-slate-400 mb-1">使用者名稱</label>
-            <input type="text" id="quick-username" required placeholder="root" value="root" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-amber-500">
+            <!-- 移除 value="root" 預設填入，改為 placeholder 提示 -->
+            <input type="text" id="quick-username" required placeholder="例如: root / ubuntu" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-amber-500">
           </div>
           <div>
             <label class="block text-sm text-slate-400 mb-1">驗證方式</label>
@@ -256,7 +257,7 @@
         <div id="key-gen-result" class="hidden flex-1 overflow-y-auto space-y-4 pr-1">
           <div>
             <div class="flex justify-between items-center mb-1.5">
-              <label class="text-xs text-slate-300 font-semibold">公鑰 (Public Key) - 請追加至遠端 VPS <code>~/.ssh/authorized_keys</code></label>
+              <label class="text-xs text-slate-300 font-semibold">公鑰 (Public Key) - 請條加至遠端 VPS <code>~/.ssh/authorized_keys</code></label>
               <button onclick="copyToClipboard('keygen-pubkey')" class="text-xs text-emerald-400 hover:text-emerald-300 hover:underline font-bold">複製公鑰</button>
             </div>
             <textarea id="keygen-pubkey" readonly rows="3" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs font-mono text-slate-200 select-all focus:outline-none leading-relaxed" spellcheck="false"></textarea>
@@ -390,7 +391,7 @@
           取消
         </button>
         <button onclick="saveRemoteFile()" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-white text-xs font-semibold transition flex items-center gap-1.5">
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path>
           </svg>
           儲存變更
