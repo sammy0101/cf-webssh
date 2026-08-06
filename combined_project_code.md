@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Thu Aug  6 10:56:42 UTC 2026
+Generated on: Thu Aug  6 11:08:56 UTC 2026
 
 ## File: wrangler.toml
 ````toml
@@ -1427,7 +1427,7 @@ async function checkAuth() {
     const res = await fetch('/api/auth-check');
     const auth = await res.json();
     
-    // 動態更新網頁主標題與登入畫面的版本號 (已補上與還原)
+    // 動態更新網頁主標題與登入畫面的版本號
     if (auth.version) {
       const versionStr = `v${auth.version}`;
       const verEl = document.getElementById('app-version');
@@ -1635,6 +1635,73 @@ async function saveConnectionsOrder() {
     }
   } catch (err) {
     console.error("保存排序失敗:", err);
+  }
+}
+
+// ==========================================
+// ⚡ 快速/臨時連線 Modal 控制邏輯 (不存入 KV)
+// ==========================================
+function showQuickConnectModal() {
+  document.getElementById('quick-connect-form').reset();
+  document.getElementById('quick-port').value = '22';
+  document.getElementById('quick-username').value = 'root';
+  toggleQuickAuthType();
+  document.getElementById('quick-connect-modal').classList.remove('hidden');
+  document.getElementById('quick-connect-modal').classList.add('flex');
+}
+
+function hideQuickConnectModal() {
+  document.getElementById('quick-connect-modal').classList.add('hidden');
+  document.getElementById('quick-connect-modal').classList.remove('flex');
+}
+
+function toggleQuickAuthType() {
+  const type = document.getElementById('quick-auth-type').value;
+  if (type === 'password') {
+    document.getElementById('quick-password-field').classList.remove('hidden');
+    document.getElementById('quick-key-field').classList.add('hidden');
+  } else {
+    document.getElementById('quick-password-field').classList.add('hidden');
+    document.getElementById('quick-key-field').classList.remove('hidden');
+  }
+}
+
+async function handleQuickConnect(event) {
+  event.preventDefault();
+  const host = document.getElementById('quick-host').value;
+  const port = document.getElementById('quick-port').value;
+  const username = document.getElementById('quick-username').value;
+  const authType = document.getElementById('quick-auth-type').value;
+
+  const body = { host, port, username };
+  if (authType === 'password') {
+    body.password = document.getElementById('quick-password').value;
+  } else {
+    body.privateKey = document.getElementById('quick-privatekey').value;
+  }
+
+  try {
+    const res = await fetch('/api/quick-connect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+
+    if (res.status === 401) {
+      hideQuickConnectModal();
+      showLoginOverlay();
+      return;
+    }
+
+    const data = await res.json();
+    if (data.success && data.tempId) {
+      hideQuickConnectModal();
+      connectSSH(data.tempId, `⚡ 臨時連線 (${username}@${host})`);
+    } else {
+      alert(`連線失敗: ${data.error || '未知錯誤'}`);
+    }
+  } catch (err) {
+    alert(`快速連線請求錯誤: ${err.message}`);
   }
 }
 
@@ -1962,7 +2029,7 @@ function refreshSftpList() {
   }
 }
 
-// 6.3 渲染遠端目錄檔案至 UI (追加「線上編輯」按鈕支援)
+// 6.3 渲染遠端目錄檔案至 UI (增加「線上編輯」按鈕支援)
 function renderSftpFiles(files) {
   const fileListContainer = document.getElementById('sftp-file-list');
   fileListContainer.innerHTML = '';
@@ -2348,7 +2415,7 @@ function runSelectedScript(selectElement) {
 }
 
 // ==========================================
-// 🔑 內建安全 SSH 密鑰對生成器 (優化接收 Event 參數)
+// 🔑 內建安全 SSH 密鑰對生成器
 // ==========================================
 async function generateSshKey(e) {
   const btn = e ? e.target : null;
@@ -2518,7 +2585,7 @@ function writeLengthPrefixed(bytes) {
   return combined;
 }
 
-// DER 轉 PEM (優化：改呼叫頂部安全的 arrayBufferToBase64 避免大 key 堆疊溢位錯誤)
+// DER 轉 PEM
 function derToPem(derBuffer, label) {
   const base64 = arrayBufferToBase64(derBuffer);
   const lines = base64.match(/.{1,64}/g).join('\n');
@@ -2532,7 +2599,7 @@ function copyToClipboard(elementId) {
   alert('已成功複製到剪貼簿！');
 }
 
-// 連線至 SSH 終端機
+// 連線至 SSH 終端機 (支援一般 KV 連線 ID 與 temp: 臨時加密連線 ID)
 function connectSSH(id, name) {
   activeConnectionId = id; 
   document.getElementById('active-terminal-title').textContent = `連線至: ${name}`;
