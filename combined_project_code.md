@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Thu Aug  6 10:54:45 UTC 2026
+Generated on: Thu Aug  6 10:55:13 UTC 2026
 
 ## File: wrangler.toml
 ````toml
@@ -870,7 +870,7 @@ export async function handleSSHUpgrade(request, env, config, isAuthEnabled, admi
   let finalPassword = config.password || '';
   let finalPrivateKey = config.privateKey || '';
   
-  if (isAuthEnabled) {
+  if (isAuthEnabled && !config.isPlaintext) {
     try {
       const aesKey = await deriveKey(adminPassword);
       finalHost = await decryptText(config.host, aesKey);
