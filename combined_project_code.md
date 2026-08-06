@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Thu Aug  6 11:36:21 UTC 2026
+Generated on: Thu Aug  6 11:44:54 UTC 2026
 
 ## File: wrangler.toml
 ````toml
@@ -2747,12 +2747,11 @@ function hideKeygenModal() {
   <!-- 網站 Favicon (使用嵌入式 SVG 終端圖示) -->
   <link rel="icon" type="image/svg+xml" href='data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="25" fill="%23020617" stroke="%2310b981" stroke-width="4"/><text x="18" y="70" font-family="monospace" font-size="62" font-weight="bold" fill="%2310b981">&gt;_</text></svg>'>
 
-  <!-- CSS 依賴 -->
+  <!-- 直連 CSS / JS 資源 -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css">
-  <!-- JS 依賴 -->
-  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.3.0/xterm.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.3.0/xterm.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm-addon-fit/0.8.0/xterm-addon-fit.min.js"></script>
 </head>
 <body class="bg-slate-950 text-slate-100 font-sans min-h-screen">
 
@@ -2853,7 +2852,6 @@ function hideKeygenModal() {
           </div>
           <div>
             <label class="block text-sm text-slate-400 mb-1">使用者名稱</label>
-            <!-- 移除 value="root" 預設填入，改為 placeholder 提示 -->
             <input type="text" id="quick-username" required placeholder="例如: root / ubuntu" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-amber-500">
           </div>
           <div>
