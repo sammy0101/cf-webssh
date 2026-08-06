@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Thu Aug  6 11:44:54 UTC 2026
+Generated on: Thu Aug  6 13:50:03 UTC 2026
 
 ## File: wrangler.toml
 ````toml
@@ -180,7 +180,7 @@ jobs:
 ````json
 {
   "name": "cf-webssh",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
