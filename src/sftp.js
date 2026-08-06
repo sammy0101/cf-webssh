@@ -8,7 +8,7 @@ export async function handleSFTPUpgrade(request, env, config, isAuthEnabled, adm
   let finalPassword = config.password || '';
   let finalPrivateKey = config.privateKey || '';
   
-  if (isAuthEnabled) {
+  if (isAuthEnabled && !config.isPlaintext) {
     try {
       const aesKey = await deriveKey(adminPassword);
       finalHost = await decryptText(config.host, aesKey);
