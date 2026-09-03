@@ -8,40 +8,36 @@
   <!-- 網站 Favicon (使用嵌入式 SVG 終端圖示) -->
   <link rel="icon" type="image/svg+xml" href='data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="25" fill="%23020617" stroke="%2310b981" stroke-width="4"/><text x="18" y="70" font-family="monospace" font-size="62" font-weight="bold" fill="%2310b981">&gt;_</text></svg>'>
 
-  <!-- 直連 CSS / JS 資源 -->
+  <!-- 樣式依賴 -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.3.0/xterm.min.css">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.3.0/xterm.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm-addon-fit/0.8.0/xterm-addon-fit.min.js"></script>
+  <!-- 🚀 T-5: 100% 邊緣交付自託管樣式 (包含 xterm 樣式) -->
+  <link rel="stylesheet" href="/vendor.css">
+
+  <!-- 🚀 T-5: 100% 邊緣交付自託管終端核心 (含 xterm, Fit, Search, WebLinks) -->
+  <script src="/vendor.js"></script>
 </head>
 <body class="bg-slate-950 text-slate-100 font-sans min-h-screen">
 
   <div id="app" class="container mx-auto p-6 max-w-6xl">
     <header class="mb-8 flex justify-between items-center border-b border-slate-800 pb-4">
-      <!-- 主畫面標題，左側帶有微型 terminal 圖示與自動化版本號徽章 -->
       <h1 class="text-2xl font-bold tracking-wider text-emerald-400 flex items-center gap-2">
         <svg class="w-8 h-8 text-emerald-400" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
           <rect width="100" height="100" rx="25" fill="#020617" stroke="currentColor" stroke-width="6"/>
           <text x="18" y="70" font-family="monospace" font-size="62" font-weight="bold" fill="currentColor">&gt;_</text>
         </svg>
         <span>CF-WebSSH</span>
-        <!-- 動態版本號徽章 -->
         <span id="app-version" class="text-xs bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded font-mono font-medium select-none ml-1">v0.0.0</span>
       </h1>
       <div class="flex space-x-3">
-        <!-- 登出按鈕，僅在啟用密碼驗證且登入成功時顯示 -->
         <button id="logout-btn" onclick="handleLogout()" class="hidden bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded font-medium transition text-sm">
           登出
         </button>
-        <!-- 獨立 SSH 密鑰生成器觸發按鈕 -->
         <button onclick="showKeygenModal()" class="bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 px-4 py-2 rounded font-medium transition text-sm">
           🔑 密鑰生成
         </button>
-        <!-- 腳本管理按鈕 -->
         <button onclick="showScriptsModal()" class="bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 px-4 py-2 rounded font-medium transition text-sm">
           📜 常用腳本
         </button>
-        <!-- 快速連線按鈕 (免儲存) -->
         <button onclick="showQuickConnectModal()" class="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded font-medium transition text-sm">
           ⚡ 快速連線
         </button>
@@ -51,21 +47,17 @@
       </div>
     </header>
 
-    <!-- 伺服器列表 -->
     <main>
-      <div id="connections-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <!-- 動態渲染清單 (支援拖拽排序) -->
-      </div>
+      <div id="connections-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
       <div id="empty-state" class="hidden text-center py-20 text-slate-500">
         目前沒有儲存的伺服器，點擊右上角新增連線。
       </div>
     </main>
   </div>
 
-  <!-- 登入全螢幕遮罩 -->
+  <!-- 登入遮罩 -->
   <div id="login-overlay" class="fixed inset-0 bg-slate-950 flex hidden items-center justify-center p-4 z-50 animate-fade-in">
     <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-sm shadow-2xl text-center">
-      <!-- 登入介面的中置大型 LOGO 與動態版本號徽章 -->
       <div class="flex justify-center mb-4">
         <svg class="w-16 h-16 text-emerald-400" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
           <rect width="100" height="100" rx="25" fill="#020617" stroke="currentColor" stroke-width="6"/>
@@ -74,7 +66,6 @@
       </div>
       <h1 class="text-2xl font-bold tracking-wider text-emerald-400 mb-2">
         ⚡ CF-WebSSH 
-        <!-- 登入介面動態版本號徽章 -->
         <span id="login-app-version" class="text-xs bg-slate-950 text-slate-500 px-1.5 py-0.5 rounded font-mono font-medium ml-1 select-none">v0.0.0</span>
       </h1>
       <p class="text-sm text-slate-400 mb-6">此工作台已受管理密碼保護，請輸入：</p>
@@ -86,7 +77,7 @@
     </div>
   </div>
 
-  <!-- 快速/臨時連線 Modal (完全不寫入 KV 資料庫) -->
+  <!-- 快速連線 Modal -->
   <div id="quick-connect-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-40">
     <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-lg shadow-2xl">
       <div class="flex justify-between items-center mb-2">
@@ -94,9 +85,7 @@
           ⚡ 快速連線
           <span class="text-xs bg-amber-950 text-amber-300 border border-amber-800 px-2 py-0.5 rounded font-normal">免新增/不儲存</span>
         </h2>
-        <button onclick="hideQuickConnectModal()" class="text-slate-400 hover:text-white text-sm font-bold p-1">
-          ✕
-        </button>
+        <button onclick="hideQuickConnectModal()" class="text-slate-400 hover:text-white text-sm font-bold p-1">✕</button>
       </div>
       <p class="text-xs text-slate-400 mb-4">直接輸入主機連線資訊即可快速開始作業，憑據絕不寫入資料庫。</p>
       <form id="quick-connect-form" onsubmit="handleQuickConnect(event)">
@@ -193,12 +182,8 @@
     <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-xl h-[70vh] flex flex-col shadow-2xl overflow-hidden">
       <div class="pb-3 border-b border-slate-800 flex justify-between items-center bg-slate-900">
         <h2 class="text-xl font-bold text-emerald-400">📜 常用腳本管理</h2>
-        <button onclick="hideScriptsModal()" class="text-slate-400 hover:text-white text-sm font-bold p-1">
-          關閉 ✕
-        </button>
+        <button onclick="hideScriptsModal()" class="text-slate-400 hover:text-white text-sm font-bold p-1">✕</button>
       </div>
-
-      <!-- 新增腳本表單 -->
       <form id="script-form" onsubmit="saveScript(event)" class="py-4 border-b border-slate-800 space-y-3">
         <div class="grid grid-cols-3 gap-3">
           <div class="col-span-1">
@@ -214,28 +199,18 @@
           </button>
         </div>
       </form>
-
-      <!-- 腳本列表區 -->
-      <div id="scripts-list" class="flex-1 overflow-y-auto pt-4 space-y-2 text-xs">
-        <!-- 動態渲染常用腳本清單 -->
-      </div>
+      <div id="scripts-list" class="flex-1 overflow-y-auto pt-4 space-y-2 text-xs"></div>
     </div>
   </div>
 
-  <!-- SSH 獨立密鑰生成器 Modal -->
+  <!-- SSH 密鑰生成器 Modal -->
   <div id="keygen-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-40">
     <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-2xl h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-fade-in">
       <div class="pb-3 border-b border-slate-800 flex justify-between items-center bg-slate-900 mb-4">
-        <h2 class="text-xl font-bold text-emerald-400 flex items-center gap-1.5">
-          🔑 SSH 密鑰生成器
-        </h2>
-        <button onclick="hideKeygenModal()" class="text-slate-400 hover:text-white text-sm font-bold p-1">
-          關閉 ✕
-        </button>
+        <h2 class="text-xl font-bold text-emerald-400 flex items-center gap-1.5">🔑 SSH 密鑰生成器</h2>
+        <button onclick="hideKeygenModal()" class="text-slate-400 hover:text-white text-sm font-bold p-1">✕</button>
       </div>
-      
       <div class="space-y-4 flex-1 flex flex-col overflow-hidden">
-        <!-- 金鑰格式選擇控制區 -->
         <div class="flex justify-between items-center flex-wrap gap-3 pb-3 border-b border-slate-800 bg-slate-900">
           <div class="flex items-center gap-2">
             <span class="text-xs text-slate-400 font-semibold select-none">金鑰算法:</span>
@@ -250,12 +225,10 @@
             一鍵生成安全密鑰
           </button>
         </div>
-        
-        <!-- 密鑰生成結果提示區 (滾動區域) -->
         <div id="key-gen-result" class="hidden flex-1 overflow-y-auto space-y-4 pr-1">
           <div>
             <div class="flex justify-between items-center mb-1.5">
-              <label class="text-xs text-slate-300 font-semibold">公鑰 (Public Key) - 請條加至遠端 VPS <code>~/.ssh/authorized_keys</code></label>
+              <label class="text-xs text-slate-300 font-semibold">公鑰 (Public Key) - 請追加至遠端 VPS <code>~/.ssh/authorized_keys</code></label>
               <button onclick="copyToClipboard('keygen-pubkey')" class="text-xs text-emerald-400 hover:text-emerald-300 hover:underline font-bold">複製公鑰</button>
             </div>
             <textarea id="keygen-pubkey" readonly rows="3" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs font-mono text-slate-200 select-all focus:outline-none leading-relaxed" spellcheck="false"></textarea>
@@ -280,20 +253,27 @@
         <span id="active-terminal-title" class="font-mono text-slate-300">連線中...</span>
         
         <span class="text-slate-700 hidden md:inline">|</span>
-        <!-- 檔案瀏覽器彈窗切換主按鈕 -->
         <button onclick="toggleSftpModal()" class="text-xs bg-slate-800 hover:bg-slate-700 hover:text-emerald-300 text-emerald-400 border border-slate-700 px-2.5 py-1 rounded font-medium transition flex items-center gap-1.5">
           📁 SFTP 檔案管理
         </button>
 
-        <!-- 常用腳本快速選單 -->
         <select id="terminal-script-select" onchange="runSelectedScript(this)" class="bg-slate-800 text-emerald-400 border border-slate-700 rounded px-2 py-1 text-xs font-medium focus:outline-none focus:border-emerald-500">
           <option value="" disabled selected>📜 常用腳本...</option>
-          <!-- 動態渲染常用腳本選項 -->
         </select>
 
-        <span class="text-xs text-slate-500 hidden lg:inline">（亦支援滑鼠直接拖曳本機檔案至終端機內放開上傳）</span>
-        
-        <!-- 隱藏的檔案選擇 input -->
+        <!-- 🚀 T-4: 終端搜尋按鈕 -->
+        <button onclick="toggleTerminalSearch()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-2.5 py-1 rounded font-medium transition flex items-center gap-1" title="搜尋終端內容 (快捷鍵: Ctrl+Shift+F)">
+          🔍 搜尋
+        </button>
+
+        <!-- 🚀 T-4: 終端浮動搜尋控制列 -->
+        <div id="terminal-search-bar" class="hidden items-center bg-slate-800 border border-slate-700 px-2 py-0.5 rounded text-xs gap-1 animate-fade-in">
+          <input type="text" id="terminal-search-input" placeholder="搜尋終端關鍵字..." class="bg-slate-950 text-white px-2 py-0.5 rounded border border-slate-700 focus:outline-none focus:border-emerald-500 text-xs w-36" onkeydown="handleSearchKeydown(event)">
+          <button onclick="findPrev()" class="text-slate-300 hover:text-white px-1 font-bold" title="上一個 (Shift+Enter)">▲</button>
+          <button onclick="findNext()" class="text-slate-300 hover:text-white px-1 font-bold" title="下一個 (Enter)">▼</button>
+          <button onclick="toggleTerminalSearch()" class="text-slate-400 hover:text-rose-400 px-1 font-bold" title="關閉">✕</button>
+        </div>
+
         <input type="file" id="sftp-file-input" class="hidden" onchange="handleFileSelect(event)">
       </div>
       <button onclick="closeTerminal()" class="bg-rose-700 hover:bg-rose-600 px-3 py-1 rounded text-white transition">
@@ -304,10 +284,9 @@
     <!-- 工作區域：終端機容器 -->
     <div class="flex-1 flex overflow-hidden">
       <div id="terminal-container" class="flex-1 p-2 bg-black relative">
-         <!-- SFTP 拖放上傳提示遮罩 -->
          <div id="dropzone-overlay" class="absolute inset-0 bg-emerald-950/85 border-4 border-dashed border-emerald-400 hidden flex-col items-center justify-center z-40 pointer-events-none">
            <div class="text-center p-6">
-             <svg class="w-16 h-16 text-emerald-400 mx-auto mb-4 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+             <svg class="w-16 h-16 text-emerald-400 mx-auto mb-4 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
              </svg>
              <p class="text-xl font-bold text-emerald-300">拖放到此處上傳至當前資料夾</p>
@@ -318,31 +297,34 @@
     </div>
   </div>
 
-  <!-- SFTP 檔案管理器中央彈窗 Modal (z-[60]) -->
+  <!-- 🚀 T-3: SFTP 檔案管理器 (新增新建檔案/目錄與手動跳轉路徑) -->
   <div id="sftp-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-[60]">
-    <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-2xl h-[80vh] flex flex-col shadow-2xl overflow-hidden animate-fade-in">
+    <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-4xl h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-fade-in">
       
-      <!-- 標題欄 -->
       <div class="pb-3 border-b border-slate-800 flex justify-between items-center bg-slate-900">
         <h3 class="font-bold text-emerald-400 text-base flex items-center gap-1.5">
           📁 SFTP 遠端檔案管理器
         </h3>
-        <button onclick="toggleSftpModal()" class="text-slate-400 hover:text-white text-sm font-bold p-1">
-          關閉 ✕
-        </button>
+        <button onclick="toggleSftpModal()" class="text-slate-400 hover:text-white text-sm font-bold p-1">✕</button>
       </div>
       
-      <!-- 操作控制與上傳按鈕 -->
-      <div class="py-3 border-b border-slate-800 bg-slate-900 flex items-center gap-2 justify-between">
+      <!-- 控制按鈕工具列 -->
+      <div class="py-3 border-b border-slate-800 bg-slate-900 flex items-center gap-2 justify-between flex-wrap">
         <div class="flex items-center gap-2">
-          <button onclick="sftpGoUp()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1" title="返回上層目錄">
+          <button onclick="sftpGoUp()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1.5 rounded text-xs font-semibold" title="返回上層目錄">
             向上 ↩
           </button>
-          <button onclick="refreshSftpList()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1" title="重新整理列表">
+          <button onclick="refreshSftpList()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1.5 rounded text-xs font-semibold" title="重新整理列表">
             整理 ↻
           </button>
+          <!-- 🚀 T-3: 新建資料夾與空檔案 -->
+          <button onclick="sftpCreateFolder()" class="bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 px-2.5 py-1.5 rounded text-xs font-semibold flex items-center gap-1">
+            + 新建目錄
+          </button>
+          <button onclick="sftpCreateFile()" class="bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 px-2.5 py-1.5 rounded text-xs font-semibold flex items-center gap-1">
+            + 新建檔案
+          </button>
         </div>
-        <!-- 整合至檔案管理器內的手動上傳按鈕 -->
         <button onclick="triggerFileInput()" class="text-xs bg-emerald-600 hover:bg-emerald-500 text-white px-3.5 py-1.5 rounded font-semibold transition flex items-center gap-1.5">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
@@ -351,54 +333,50 @@
         </button>
       </div>
 
-      <!-- 目前目錄路徑顯示欄 -->
-      <div class="p-2 border-b border-slate-800 bg-slate-950 flex items-center gap-1">
-        <span class="text-xs text-slate-500 font-mono pr-1 select-none">路徑:</span>
-        <div id="sftp-breadcrumbs" class="flex-1 flex items-center flex-wrap gap-1 text-[11px] font-mono select-none">
-          <!-- 麵包屑節點將由 JavaScript 動態生成 -->
-        </div>
+      <!-- 🚀 T-3: 麵包屑導航條與「手動絕對路徑輸入跳轉」 -->
+      <div class="p-2 border-b border-slate-800 bg-slate-950 flex items-center gap-2">
+        <span class="text-xs text-slate-500 font-mono select-none">路徑:</span>
+        <div id="sftp-breadcrumbs" class="flex-1 flex items-center flex-wrap gap-1 text-[11px] font-mono select-none"></div>
+        <button onclick="sftpPromptNavigate()" class="text-[11px] text-slate-400 hover:text-emerald-300 bg-slate-900 border border-slate-800 px-2 py-0.5 rounded font-mono" title="手動輸入絕對路徑直接跳轉">
+          ✏️ 輸入跳轉
+        </button>
       </div>
 
-      <!-- 檔案與資料夾清單區 -->
-      <div id="sftp-file-list" class="flex-1 overflow-y-auto p-4 space-y-1.5 text-xs font-mono select-none">
-        <!-- 動態渲染清單 -->
+      <!-- 檔案列表 -->
+      <div id="sftp-file-list" class="flex-1 overflow-y-auto p-4 space-y-1 text-xs font-mono select-none"></div>
+    </div>
+  </div>
+
+  <!-- 🚀 T-3: 統一通用 SFTP 互動輸入彈窗 (mkdir, touch, rename, chmod, jump) -->
+  <div id="sftp-prompt-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-[80]">
+    <div class="bg-slate-900 border border-slate-800 rounded-lg p-5 w-full max-w-sm shadow-2xl animate-fade-in">
+      <h3 id="sftp-prompt-title" class="text-sm font-bold text-slate-200 mb-3">請輸入</h3>
+      <input type="text" id="sftp-prompt-input" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono mb-4">
+      <div class="flex justify-end space-x-2">
+        <button onclick="closeSftpPrompt()" class="px-3 py-1.5 border border-slate-800 rounded text-slate-400 hover:bg-slate-800 text-xs transition">取消</button>
+        <button id="sftp-prompt-confirm-btn" class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-semibold transition">確認</button>
       </div>
     </div>
   </div>
 
-  <!-- SFTP 遠端線上檔案編輯器 Modal (z-[70] 覆蓋於 SFTP 彈窗之上) -->
+  <!-- 遠端線上檔案編輯器 Modal (z-[70]) -->
   <div id="editor-modal" class="fixed inset-0 bg-black/85 hidden items-center justify-center p-4 z-[70]">
     <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-3xl h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-fade-in">
-      
-      <!-- 編輯器標題 -->
       <div class="pb-3 border-b border-slate-800 flex justify-between items-center bg-slate-900">
-        <h3 id="editor-file-title" class="font-bold text-amber-400 text-sm font-mono truncate max-w-[80%]">
-          📝 編輯遠端檔案
-        </h3>
-        <button onclick="closeFileEditor()" class="text-slate-400 hover:text-white text-xs">
-          取消 ✕
-        </button>
+        <h3 id="editor-file-title" class="font-bold text-amber-400 text-sm font-mono truncate max-w-[80%]">📝 編輯遠端檔案</h3>
+        <button onclick="closeFileEditor()" class="text-slate-400 hover:text-white text-xs">取消 ✕</button>
       </div>
-      
-      <!-- 編輯內容文字區域 -->
       <textarea id="editor-textarea" class="flex-1 w-full bg-slate-950 border border-slate-800 rounded p-4 text-xs font-mono text-slate-100 focus:outline-none focus:border-emerald-500 resize-none mt-4 whitespace-pre overflow-auto leading-relaxed" spellcheck="false"></textarea>
-      
-      <!-- 操作按鈕列 -->
       <div class="mt-4 flex justify-end space-x-3">
-        <button onclick="closeFileEditor()" class="px-4 py-2 border border-slate-800 rounded hover:bg-slate-800 text-xs transition">
-          取消
-        </button>
+        <button onclick="closeFileEditor()" class="px-4 py-2 border border-slate-800 rounded hover:bg-slate-800 text-xs transition">取消</button>
         <button onclick="saveRemoteFile()" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-white text-xs font-semibold transition flex items-center gap-1.5">
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path>
-          </svg>
           儲存變更
         </button>
       </div>
     </div>
   </div>
 
-  <!-- 上傳與下載進度顯示遮罩 (維持 z-50 原樣) -->
+  <!-- 傳輸處理中進度條 -->
   <div id="upload-overlay" class="fixed inset-0 bg-black/70 hidden items-center justify-center p-4 z-50">
     <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-sm shadow-2xl text-center">
       <h3 class="text-lg font-bold text-emerald-400 mb-2">傳輸處理中 (SFTP)</h3>
@@ -416,7 +394,6 @@
     </div>
   </div>
 
-  <!-- 引入解耦的前端核心控制程式腳本 (由後端動態提供) -->
   <script src="/app.js"></script>
 </body>
 </html>
