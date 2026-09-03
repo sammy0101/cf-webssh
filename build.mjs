@@ -1,11 +1,9 @@
 import * as esbuild from 'esbuild';
-import { readFileSync } from 'node:fs'; // 🆕 引入原生存取模組 (修改處)
+import { readFileSync } from 'node:fs';
 
-// 🆕 自動讀取 package.json 中的專案版本號 (修改處)
 const pkg = JSON.parse(readFileSync('./package.json', 'utf8'));
 const version = pkg.version || '1.0.0';
 
-// 定義所有 Node.js 的內建核心模組名稱
 const nodeBuiltins = [
   'assert', 'buffer', 'child_process', 'cluster', 'console', 'constants', 
   'crypto', 'dgram', 'dns', 'domain', 'events', 'fs', 'http', 'http2', 
@@ -15,7 +13,7 @@ const nodeBuiltins = [
   'url', 'util', 'v8', 'vm', 'wasi', 'worker_threads', 'zlib'
 ];
 
-// 建立一個 esbuild 插件，用來忽略二進位原生模組 (.node 檔案)
+// 忽略原生二進位模組
 const ignoreNodeExtensionsPlugin = {
   name: 'ignore-node-extensions',
   setup(build) {
@@ -23,7 +21,6 @@ const ignoreNodeExtensionsPlugin = {
       path: args.path,
       namespace: 'ignore-node-extensions-namespace',
     }));
-
     build.onLoad({ filter: /.*/, namespace: 'ignore-node-extensions-namespace' }, () => ({
       contents: 'module.exports = {};',
       loader: 'js',
@@ -31,7 +28,7 @@ const ignoreNodeExtensionsPlugin = {
   },
 };
 
-// 建立一個自訂的 esbuild 插件，專用來將 public/app.js 讀取為靜態字串
+// 讀取前端 app.js 為靜態字串
 const clientJsLoaderPlugin = {
   name: 'client-js-loader',
   setup(build) {
@@ -39,10 +36,7 @@ const clientJsLoaderPlugin = {
       const path = await import('node:path');
       const cleanPath = args.path.replace(/^client-js:/, '');
       const absPath = path.resolve(args.resolveDir, cleanPath);
-      return {
-        path: absPath,
-        namespace: 'client-js-namespace',
-      };
+      return { path: absPath, namespace: 'client-js-namespace' };
     });
     build.onLoad({ filter: /.*/, namespace: 'client-js-namespace' }, async args => {
       const fs = await import('node:fs/promises');
@@ -55,7 +49,63 @@ const clientJsLoaderPlugin = {
   },
 };
 
-// 撰寫具備高度診斷與防禦機制的 Banner 代碼
+// 🚀 Zero-CDN: 自動打包 xterm 與其擴展插件成 vendor 靜態資源
+const vendorBundlePlugin = {
+  name: 'vendor-bundle-loader',
+  setup(build) {
+    let cachedVendorJs = null;
+    let cachedVendorCss = null;
+
+    build.onResolve({ filter: /^vendor-(js|css):client$/ }, args => ({
+      path: args.path,
+      namespace: 'vendor-bundle-namespace'
+    }));
+
+    build.onLoad({ filter: /.*/, namespace: 'vendor-bundle-namespace' }, async args => {
+      if (!cachedVendorJs) {
+        const bundle = await esbuild.build({
+          stdin: {
+            contents: `
+              import { Terminal } from 'xterm';
+              import { FitAddon } from '@xterm/addon-fit';
+              import { SearchAddon } from '@xterm/addon-search';
+              import { WebLinksAddon } from '@xterm/addon-web-links';
+              import 'xterm/css/xterm.css';
+
+              window.Terminal = Terminal;
+              window.FitAddon = { FitAddon };
+              window.SearchAddon = { SearchAddon };
+              window.WebLinksAddon = { WebLinksAddon };
+            `,
+            resolveDir: '.',
+            loader: 'js'
+          },
+          bundle: true,
+          format: 'iife',
+          minify: true,
+          write: false,
+          outdir: 'out'
+        });
+
+        for (const file of bundle.outputFiles) {
+          if (file.path.endsWith('.js')) {
+            cachedVendorJs = file.text;
+          } else if (file.path.endsWith('.css')) {
+            cachedVendorCss = file.text;
+          }
+        }
+      }
+
+      const isJs = args.path.startsWith('vendor-js:');
+      const content = isJs ? (cachedVendorJs || '') : (cachedVendorCss || '');
+      return {
+        contents: `export default ${JSON.stringify(content)};`,
+        loader: 'js'
+      };
+    });
+  }
+};
+
 const bannerJs = `// @ts-nocheck
 import { createRequire } from 'node:module';
 const __filename = 'index.js';
@@ -85,26 +135,17 @@ const require = (name) => {
     }
   }
 
-  if (typeof res === 'function') {
-    return res;
-  }
+  if (typeof res === 'function') return res;
 
   if (res && typeof res === 'object') {
-    const hasProto = (Object.getPrototypeOf(res) !== null);
-
-    if (hasProto) {
-      return res;
-    }
-
+    if (Object.getPrototypeOf(res) !== null) return res;
     const ns = res;
     const baseName = name.replace(/^node:/, '');
     let ctor = null;
 
-    if (typeof ns.default === 'function') {
-      ctor = ns.default;
-    } else if (typeof ns[baseName] === 'function') {
-      ctor = ns[baseName];
-    } else {
+    if (typeof ns.default === 'function') ctor = ns.default;
+    else if (typeof ns[baseName] === 'function') ctor = ns[baseName];
+    else {
       const pascal = baseName.charAt(0).toUpperCase() + baseName.slice(1);
       if (typeof ns[pascal] === 'function') ctor = ns[pascal];
     }
@@ -132,7 +173,6 @@ const require = (name) => {
     }
     return wrapper;
   }
-
   return res;
 };`;
 
@@ -149,20 +189,11 @@ try {
       ...nodeBuiltins,
       ...nodeBuiltins.map(name => `node:${name}`)
     ],
-    banner: {
-      js: bannerJs,
-    },
-    // 🆕 注入全域變數常數，於編譯期將版本號直接寫入 (修改處)
-    define: {
-      '__APP_VERSION__': JSON.stringify(version)
-    },
-    plugins: [ignoreNodeExtensionsPlugin, clientJsLoaderPlugin], 
-    loader: {
-      '.html': 'text',
-    },
-    alias: {
-      'cpu-features': './mocks/cpu-features.js'
-    }
+    banner: { js: bannerJs },
+    define: { '__APP_VERSION__': JSON.stringify(version) },
+    plugins: [ignoreNodeExtensionsPlugin, clientJsLoaderPlugin, vendorBundlePlugin], 
+    loader: { '.html': 'text' },
+    alias: { 'cpu-features': './mocks/cpu-features.js' }
   });
   console.log('Build completed successfully.');
 } catch (error) {
