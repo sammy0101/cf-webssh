@@ -1,21 +1,37 @@
 import htmlContent from '../public/index.html';
 import appJs from 'client-js:../public/app.js'; 
+import vendorJs from 'vendor-js:client';
+import vendorCss from 'vendor-css:client';
 import { deriveKey, encryptText, decryptText, hashPassword, getExpectedToken, createQuickConnectToken, parseQuickConnectToken } from './crypto.js';
 import { handleSSHUpgrade } from './ssh.js';
 import { handleSFTPUpgrade } from './sftp.js';
 
-// __APP_VERSION__ 會在編譯階段被 esbuild 動態替換為 package.json 的實體版本字串
 const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.0';
+
+// 🛡️ T-2: 邊緣 IP 限流輔助函式
+async function checkRateLimit(env, key, maxAttempts, decaySeconds) {
+  if (!env.WEBSSH_KV) return { allowed: true };
+  try {
+    const current = await env.WEBSSH_KV.get(key);
+    const count = current ? parseInt(current, 10) : 0;
+    if (count >= maxAttempts) {
+      return { allowed: false, count };
+    }
+    await env.WEBSSH_KV.put(key, String(count + 1), { expirationTtl: decaySeconds });
+    return { allowed: true, count: count + 1 };
+  } catch (_) {
+    return { allowed: true };
+  }
+}
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    const clientIp = request.headers.get('cf-connecting-ip') || 'unknown';
 
-    // 讀取環境變數中的管理密碼
     const adminPassword = env.ADMIN_PASSWORD;
     const isAuthEnabled = typeof adminPassword === 'string' && adminPassword.length > 0;
 
-    // Cookie 讀取輔助函數
     const getCookie = (name) => {
       const value = `; ${request.headers.get('Cookie') || ''}`;
       const parts = value.split(`; ${name}=`);
@@ -23,7 +39,6 @@ export default {
       return null;
     };
 
-    // 驗證當前連線是否已授權
     const isAuthorized = async () => {
       if (!isAuthEnabled) return true;
       const token = getCookie('webssh_token');
@@ -32,30 +47,54 @@ export default {
       return token === expected;
     };
 
-    // 安全防禦門禁
-    const publicPaths = ['/', '/index.html', '/app.js', '/api/login', '/api/auth-check', '/api/logout'];
+    // 公開路徑
+    const publicPaths = [
+      '/', '/index.html', '/app.js', '/vendor.js', '/vendor.css',
+      '/api/login', '/api/auth-check', '/api/logout'
+    ];
     if (!publicPaths.includes(url.pathname)) {
       if (!(await isAuthorized())) {
         return new Response('Unauthorized', { status: 401 });
       }
     }
 
-    // 1. 靜態網頁分發
+    // 1. 靜態網頁與 Zero-CDN 資源交付
     if (url.pathname === '/' || url.pathname === '/index.html') {
-      const parsedHtml = htmlContent.replace('/app.js', `/app.js?v=${APP_VERSION}`);
+      const parsedHtml = htmlContent
+        .replace('/app.js', `/app.js?v=${APP_VERSION}`)
+        .replace('/vendor.js', `/vendor.js?v=${APP_VERSION}`)
+        .replace('/vendor.css', `/vendor.css?v=${APP_VERSION}`);
       return new Response(parsedHtml, {
         headers: { 'Content-Type': 'text/html; charset=utf-8' },
       });
     }
 
-    // 1.1 靜態分離後的前端 JavaScript 分發
     if (url.pathname === '/app.js') {
       return new Response(appJs, {
         headers: { 'Content-Type': 'application/javascript; charset=utf-8' },
       });
     }
 
-    // 1.2 API: 檢查當前驗證狀態
+    // 🚀 T-5: 100% 邊緣交付 xterm 核心與 CSS
+    if (url.pathname === '/vendor.js') {
+      return new Response(vendorJs, {
+        headers: { 
+          'Content-Type': 'application/javascript; charset=utf-8',
+          'Cache-Control': 'public, max-age=604800, immutable'
+        },
+      });
+    }
+
+    if (url.pathname === '/vendor.css') {
+      return new Response(vendorCss, {
+        headers: { 
+          'Content-Type': 'text/css; charset=utf-8',
+          'Cache-Control': 'public, max-age=604800, immutable'
+        },
+      });
+    }
+
+    // 1.2 API: 驗證狀態檢查
     if (url.pathname === '/api/auth-check' && request.method === 'GET') {
       const authorized = await isAuthorized();
       return new Response(JSON.stringify({
@@ -67,11 +106,21 @@ export default {
       });
     }
 
-    // 1.3 API: 登入驗證
+    // 1.3 API: 登入驗證（🛡️ T-2: 加入暴力破解防護，5 次失敗封鎖 15 分鐘）
     if (url.pathname === '/api/login' && request.method === 'POST') {
       try {
+        const rlKey = `ratelimit:login:${clientIp}`;
+        const rlCheck = await checkRateLimit(env, rlKey, 5, 900);
+        if (!rlCheck.allowed) {
+          return new Response(JSON.stringify({ error: '密碼錯誤次數過多，此 IP 已被暫時封鎖 15 分鐘' }), {
+            status: 429,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
         const { password } = await request.json();
         if (isAuthEnabled && password === adminPassword) {
+          if (env.WEBSSH_KV) await env.WEBSSH_KV.delete(rlKey);
           const token = await getExpectedToken(adminPassword);
           return new Response(JSON.stringify({ success: true }), {
             headers: {
@@ -102,9 +151,18 @@ export default {
       });
     }
 
-    // 1.5 API: 快速/臨時連線 (完全不存入 KV)
+    // 1.5 API: 快速連線憑據生成（🛡️ T-2: 每分鐘限制 15 次）
     if (url.pathname === '/api/quick-connect' && request.method === 'POST') {
       try {
+        const rlKey = `ratelimit:quick:${clientIp}`;
+        const rlCheck = await checkRateLimit(env, rlKey, 15, 60);
+        if (!rlCheck.allowed) {
+          return new Response(JSON.stringify({ error: '連線建立請求過於頻繁，請稍候重試' }), {
+            status: 429,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
         const data = await request.json();
         if (!data.host || !data.username) {
           return new Response(JSON.stringify({ error: '缺少必要欄位' }), {
@@ -124,23 +182,19 @@ export default {
       }
     }
 
-    // 2. API: 獲取已儲存的連線列表
+    // 2. API: 伺服器連線列表
     if (url.pathname === '/api/connections' && request.method === 'GET') {
       try {
         const list = await env.WEBSSH_KV.list({ prefix: 'connection:' });
-        const keys = list.keys;
-        const values = await Promise.all(keys.map(key => env.WEBSSH_KV.get(key.name)));
+        const values = await Promise.all(list.keys.map(key => env.WEBSSH_KV.get(key.name)));
         let connections = [];
 
         let aesKey = null;
-        if (isAuthEnabled) {
-          aesKey = await deriveKey(adminPassword);
-        }
+        if (isAuthEnabled) aesKey = await deriveKey(adminPassword);
 
         for (const val of values) {
           if (val) {
             const data = JSON.parse(val);
-            
             let decName = data.name || '';
             let decHost = data.host || '';
             let decPort = data.port || 22;
@@ -151,13 +205,11 @@ export default {
               try {
                 decName = await decryptText(data.name, aesKey);
                 decHost = await decryptText(data.host, aesKey);
-                const decPortStr = await decryptText(data.port, aesKey);
-                decPort = parseInt(decPortStr) || 22;
+                decPort = parseInt(await decryptText(data.port, aesKey)) || 22;
                 decUsername = await decryptText(data.username, aesKey);
-                
                 const decPrivateKey = await decryptText(data.privateKey, aesKey);
                 hasPrivateKey = typeof decPrivateKey === 'string' && decPrivateKey.length > 0;
-              } catch (err) {
+              } catch (_) {
                 decName = data.name || '';
                 decHost = data.host || '';
                 decPort = parseInt(data.port) || 22;
@@ -179,7 +231,6 @@ export default {
           }
         }
 
-        // 自訂排序清單
         const orderVal = await env.WEBSSH_KV.get('connections_order');
         if (orderVal) {
           try {
@@ -205,7 +256,7 @@ export default {
       }
     }
 
-    // 3. API: 新增/更新連線資訊
+    // 3. API: 新增/更新連線
     if (url.pathname === '/api/connections' && request.method === 'POST') {
       try {
         const data = await request.json();
@@ -218,9 +269,7 @@ export default {
         const id = data.id || crypto.randomUUID();
 
         let aesKey = null;
-        if (isAuthEnabled) {
-          aesKey = await deriveKey(adminPassword);
-        }
+        if (isAuthEnabled) aesKey = await deriveKey(adminPassword);
 
         const existingVal = await env.WEBSSH_KV.get(`connection:${id}`);
         let existingPlaintext = { name: '', host: '', port: 22, username: '', password: '', privateKey: '' };
@@ -230,30 +279,14 @@ export default {
             if (isAuthEnabled && aesKey) {
               existingPlaintext.name = await decryptText(existingData.name, aesKey);
               existingPlaintext.host = await decryptText(existingData.host, aesKey);
-              const decPortStr = await decryptText(existingData.port, aesKey);
-              existingPlaintext.port = parseInt(decPortStr) || 22;
+              existingPlaintext.port = parseInt(await decryptText(existingData.port, aesKey)) || 22;
               existingPlaintext.username = await decryptText(existingData.username, aesKey);
               existingPlaintext.password = await decryptText(existingData.password, aesKey);
               existingPlaintext.privateKey = await decryptText(existingData.privateKey, aesKey);
             } else {
-              existingPlaintext.name = existingData.name || '';
-              existingPlaintext.host = existingData.host || '';
-              existingPlaintext.port = parseInt(existingData.port) || 22;
-              existingPlaintext.username = existingData.username || '';
-              existingPlaintext.password = existingData.password || '';
-              existingPlaintext.privateKey = existingData.privateKey || '';
+              existingPlaintext = existingData;
             }
-          } catch (_) {
-            try {
-              const existingData = JSON.parse(existingVal);
-              existingPlaintext.name = existingData.name || '';
-              existingPlaintext.host = existingData.host || '';
-              existingPlaintext.port = parseInt(existingData.port) || 22;
-              existingPlaintext.username = existingData.username || '';
-              existingPlaintext.password = existingData.password || '';
-              existingPlaintext.privateKey = existingData.privateKey || '';
-            } catch (__) {}
-          }
+          } catch (_) {}
         }
 
         const finalName = data.name !== undefined ? data.name : existingPlaintext.name;
@@ -279,7 +312,7 @@ export default {
           storedPrivateKey = await encryptText(finalPrivateKey, aesKey);
         }
 
-        const connectionData = {
+        await env.WEBSSH_KV.put(`connection:${id}`, JSON.stringify({
           id,
           name: storedName,
           host: storedHost,
@@ -287,9 +320,8 @@ export default {
           username: storedUsername,
           password: storedPassword,
           privateKey: storedPrivateKey,
-        };
-        
-        await env.WEBSSH_KV.put(`connection:${id}`, JSON.stringify(connectionData));
+        }));
+
         return new Response(JSON.stringify({ success: true, id }), {
           headers: { 'Content-Type': 'application/json' },
         });
@@ -301,7 +333,7 @@ export default {
       }
     }
 
-    // 3.5 API: 更新自訂排序清單
+    // 3.5 API: 排序
     if (url.pathname === '/api/connections/order' && request.method === 'POST') {
       try {
         const { order } = await request.json();
@@ -311,148 +343,86 @@ export default {
             headers: { 'Content-Type': 'application/json' }
           });
         }
-        return new Response(JSON.stringify({ error: '無效的排序格式' }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        });
+        return new Response(JSON.stringify({ error: '無效的排序格式' }), { status: 400 });
       } catch (err) {
-        return new Response(JSON.stringify({ error: err.message }), {
-          status: 500,
-          headers: { 'Content-Type': 'application/json' }
-        });
+        return new Response(JSON.stringify({ error: err.message }), { status: 500 });
       }
     }
 
-    // 3.6 API: 獲取常用腳本列表
+    // 3.6 - 3.8 API: 腳本管理
     if (url.pathname === '/api/scripts' && request.method === 'GET') {
       try {
         const list = await env.WEBSSH_KV.list({ prefix: 'script:' });
-        const keys = list.keys;
-        const values = await Promise.all(keys.map(key => env.WEBSSH_KV.get(key.name)));
-        const scripts = [];
-
-        let aesKey = null;
-        if (isAuthEnabled) {
-          aesKey = await deriveKey(adminPassword);
-        }
-
-        for (const val of values) {
-          if (val) {
-            const data = JSON.parse(val);
-            let decName = data.name || '';
-            let decContent = data.content || '';
-
-            if (isAuthEnabled && aesKey) {
-              try {
-                decName = await decryptText(data.name, aesKey);
-                decContent = await decryptText(data.content, aesKey);
-              } catch (_) {
-                decName = data.name || '';
-                decContent = data.content || '';
-              }
-            }
-
-            scripts.push({ id: data.id, name: decName, content: decContent });
-          }
-        }
-        return new Response(JSON.stringify(scripts), {
-          headers: { 'Content-Type': 'application/json' }
-        });
+        const values = await Promise.all(list.keys.map(key => env.WEBSSH_KV.get(key.name)));
+        const scripts = values.filter(Boolean).map(v => JSON.parse(v));
+        return new Response(JSON.stringify(scripts), { headers: { 'Content-Type': 'application/json' } });
       } catch (err) {
         return new Response(JSON.stringify({ error: err.message }), { status: 500 });
       }
     }
 
-    // 3.7 API: 儲存常用腳本
     if (url.pathname === '/api/scripts' && request.method === 'POST') {
       try {
         const data = await request.json();
-        if (!data.name || !data.content) {
-          return new Response(JSON.stringify({ error: '缺少必要欄位' }), { status: 400 });
-        }
         const id = data.id || crypto.randomUUID();
-
-        const scriptData = {
-          id,
-          name: data.name,
-          content: data.content
-        };
-        await env.WEBSSH_KV.put(`script:${id}`, JSON.stringify(scriptData));
-        return new Response(JSON.stringify({ success: true, id }), {
-          headers: { 'Content-Type': 'application/json' }
-        });
+        await env.WEBSSH_KV.put(`script:${id}`, JSON.stringify({ id, name: data.name, content: data.content }));
+        return new Response(JSON.stringify({ success: true, id }), { headers: { 'Content-Type': 'application/json' } });
       } catch (err) {
         return new Response(JSON.stringify({ error: err.message }), { status: 500 });
       }
     }
 
-    // 3.8 API: 刪除常用腳本
     if (url.pathname.startsWith('/api/scripts/') && request.method === 'DELETE') {
       try {
         const id = url.pathname.split('/').pop();
         await env.WEBSSH_KV.delete(`script:${id}`);
-        return new Response(JSON.stringify({ success: true }), {
-          headers: { 'Content-Type': 'application/json' }
-        });
+        return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
       } catch (err) {
         return new Response(JSON.stringify({ error: err.message }), { status: 500 });
       }
     }
 
-    // 4. API: 刪除連線資訊
+    // 4. API: 刪除連線
     if (url.pathname.startsWith('/api/connections/') && request.method === 'DELETE') {
       try {
         const id = url.pathname.split('/').pop();
         await env.WEBSSH_KV.delete(`connection:${id}`);
-        return new Response(JSON.stringify({ success: true }), {
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
       } catch (err) {
-        return new Response(JSON.stringify({ error: err.message }), {
-          status: 500,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return new Response(JSON.stringify({ error: err.message }), { status: 500 });
       }
     }
 
-    // 5. WebSocket: SSH 終端通道 (支援一般 KV 連線與臨時快速連線)
+    // 🚀 5. WebSocket: SSH 終端通道（T-1: 支援 In-Band 快速連線認證 /ssh/quick）
     if (url.pathname.startsWith('/ssh/') && request.headers.get('Upgrade') === 'websocket') {
-      const id = url.pathname.split('/').pop();
-      let config = null;
-
-      if (id.startsWith('temp:')) {
-        try {
-          config = await parseQuickConnectToken(id, adminPassword, isAuthEnabled);
-        } catch (err) {
-          return new Response('臨時連線 Token 無效或已過期', { status: 400 });
-        }
-      } else {
-        const connectionVal = await env.WEBSSH_KV.get(`connection:${id}`);
-        if (!connectionVal) return new Response('連線配置不存在', { status: 404 });
-        config = JSON.parse(connectionVal);
+      const endpoint = url.pathname.split('/').pop();
+      if (endpoint === 'quick') {
+        // T-1: 第一幀 In-Band 握手，零 URL 溢位風險
+        return handleSSHUpgrade(request, env, null, isAuthEnabled, adminPassword, deriveKey, decryptText, parseQuickConnectToken);
       }
 
-      return handleSSHUpgrade(request, env, config, isAuthEnabled, adminPassword, deriveKey, decryptText);
+      // 一般持久儲存連線
+      const connectionVal = await env.WEBSSH_KV.get(`connection:${endpoint}`);
+      if (!connectionVal) return new Response('連線配置不存在', { status: 404 });
+      const config = JSON.parse(connectionVal);
+
+      return handleSSHUpgrade(request, env, config, isAuthEnabled, adminPassword, deriveKey, decryptText, parseQuickConnectToken);
     }
 
-    // 6. WebSocket: SFTP 全功能通道 (支援一般 KV 連線與臨時快速連線)
+    // 🚀 6. WebSocket: SFTP 通道（T-1: 支援 In-Band 快速連線認證 /sftp/quick）
     if (url.pathname.startsWith('/sftp/') && request.headers.get('Upgrade') === 'websocket') {
-      const id = url.pathname.split('/').pop();
-      let config = null;
-
-      if (id.startsWith('temp:')) {
-        try {
-          config = await parseQuickConnectToken(id, adminPassword, isAuthEnabled);
-        } catch (err) {
-          return new Response('臨時連線 Token 無效或已過期', { status: 400 });
-        }
-      } else {
-        const connectionVal = await env.WEBSSH_KV.get(`connection:${id}`);
-        if (!connectionVal) return new Response('連線配置不存在', { status: 404 });
-        config = JSON.parse(connectionVal);
+      const endpoint = url.pathname.split('/').pop();
+      if (endpoint === 'quick') {
+        // T-1: 第一幀 In-Band 握手
+        return handleSFTPUpgrade(request, env, null, isAuthEnabled, adminPassword, deriveKey, decryptText, parseQuickConnectToken);
       }
 
-      return handleSFTPUpgrade(request, env, config, isAuthEnabled, adminPassword, deriveKey, decryptText);
+      // 一般持久儲存連線
+      const connectionVal = await env.WEBSSH_KV.get(`connection:${endpoint}`);
+      if (!connectionVal) return new Response('連線配置不存在', { status: 404 });
+      const config = JSON.parse(connectionVal);
+
+      return handleSFTPUpgrade(request, env, config, isAuthEnabled, adminPassword, deriveKey, decryptText, parseQuickConnectToken);
     }
 
     return new Response('Not Found', { status: 404 });
