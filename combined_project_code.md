@@ -1,5 +1,5 @@
 # Complete Project Codebase
-Generated on: Thu Sep  3 16:58:41 UTC 2026
+Generated on: Fri Sep  4 03:46:25 UTC 2026
 
 ## File: build.mjs
 ````mjs
@@ -205,471 +205,6 @@ try {
   console.error('Build failed:', error);
   process.exit(1);
 }
-
-````
-
-## File: wrangler.toml
-````toml
-name = "cf-webssh"
-main = "dist/index.js"
-compatibility_date = "2026-01-01"
-compatibility_flags = [ "nodejs_compat" ]
-
-[[kv_namespaces]]
-binding = "WEBSSH_KV"
-id = "KV_NAMESPACE_ID_PLACEHOLDER"
-
-[vars]
-# ==========================================
-# 管理登入密碼（選填）
-# ==========================================
-# 若留空或註解此行，系統將不啟用登入頁面，任何人皆能讀取/連線您的伺服器。
-#
-# 建議生產環境保護：
-# 本地測試時可於此處直接填寫明文密碼，
-# 但發佈至生產環境時，強烈建議不要寫入此toml檔，
-# 而是直接在網頁控制台設定「Secret」或使用命令：
-# $ npx wrangler secret put ADMIN_PASSWORD
-# ==========================================
-# ADMIN_PASSWORD = "your_secure_password"
-
-````
-
-## File: package.json
-````json
-{
-  "name": "cf-webssh",
-  "version": "2.2.0",
-  "type": "module",
-  "scripts": {
-    "build": "node build.mjs",
-    "deploy": "npm run build && wrangler deploy"
-  },
-  "dependencies": {
-    "@xterm/addon-fit": "^0.10.0",
-    "@xterm/addon-search": "^0.15.0",
-    "@xterm/addon-web-links": "^0.11.0",
-    "ssh2": "^1.15.0",
-    "xterm": "^5.3.0"
-  },
-  "devDependencies": {
-    "esbuild": "^0.20.0",
-    "wrangler": "^3.50.0"
-  }
-}
-
-````
-
-## File: mocks/cpu-features.js
-````js
-// Mock cpu-features for worker build
-const mock = () => ({});
-mock.default = mock;
-export default mock;
-
-````
-
-## File: public/index.html
-````html
-<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cloudflare WebSSH 工作台</title>
-  
-  <!-- 網站 Favicon (使用嵌入式 SVG 終端圖示) -->
-  <link rel="icon" type="image/svg+xml" href='data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="25" fill="%23020617" stroke="%2310b981" stroke-width="4"/><text x="18" y="70" font-family="monospace" font-size="62" font-weight="bold" fill="%2310b981">&gt;_</text></svg>'>
-
-  <!-- 樣式依賴 -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- 🚀 T-5: 100% 邊緣交付自託管樣式 (包含 xterm 樣式) -->
-  <link rel="stylesheet" href="/vendor.css">
-
-  <!-- 🚀 T-5: 100% 邊緣交付自託管終端核心 (含 xterm, Fit, Search, WebLinks) -->
-  <script src="/vendor.js"></script>
-</head>
-<body class="bg-slate-950 text-slate-100 font-sans min-h-screen">
-
-  <div id="app" class="container mx-auto p-6 max-w-6xl">
-    <header class="mb-8 flex justify-between items-center border-b border-slate-800 pb-4">
-      <h1 class="text-2xl font-bold tracking-wider text-emerald-400 flex items-center gap-2">
-        <svg class="w-8 h-8 text-emerald-400" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect width="100" height="100" rx="25" fill="#020617" stroke="currentColor" stroke-width="6"/>
-          <text x="18" y="70" font-family="monospace" font-size="62" font-weight="bold" fill="currentColor">&gt;_</text>
-        </svg>
-        <span>CF-WebSSH</span>
-        <span id="app-version" class="text-xs bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded font-mono font-medium select-none ml-1">v0.0.0</span>
-      </h1>
-      <div class="flex space-x-3">
-        <button id="logout-btn" onclick="handleLogout()" class="hidden bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded font-medium transition text-sm">
-          登出
-        </button>
-        <button onclick="showKeygenModal()" class="bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 px-4 py-2 rounded font-medium transition text-sm">
-          🔑 密鑰生成
-        </button>
-        <button onclick="showScriptsModal()" class="bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 px-4 py-2 rounded font-medium transition text-sm">
-          📜 常用腳本
-        </button>
-        <button onclick="showQuickConnectModal()" class="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded font-medium transition text-sm">
-          ⚡ 快速連線
-        </button>
-        <button onclick="showAddModal()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded font-medium transition text-sm">
-          新增伺服器
-        </button>
-      </div>
-    </header>
-
-    <main>
-      <div id="connections-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
-      <div id="empty-state" class="hidden text-center py-20 text-slate-500">
-        目前沒有儲存的伺服器，點擊右上角新增連線。
-      </div>
-    </main>
-  </div>
-
-  <!-- 登入遮罩 -->
-  <div id="login-overlay" class="fixed inset-0 bg-slate-950 flex hidden items-center justify-center p-4 z-50 animate-fade-in">
-    <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-sm shadow-2xl text-center">
-      <div class="flex justify-center mb-4">
-        <svg class="w-16 h-16 text-emerald-400" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect width="100" height="100" rx="25" fill="#020617" stroke="currentColor" stroke-width="6"/>
-          <text x="18" y="70" font-family="monospace" font-size="62" font-weight="bold" fill="currentColor">&gt;_</text>
-        </svg>
-      </div>
-      <h1 class="text-2xl font-bold tracking-wider text-emerald-400 mb-2">
-        ⚡ CF-WebSSH 
-        <span id="login-app-version" class="text-xs bg-slate-950 text-slate-500 px-1.5 py-0.5 rounded font-mono font-medium ml-1 select-none">v0.0.0</span>
-      </h1>
-      <p class="text-sm text-slate-400 mb-6">此工作台已受管理密碼保護，請輸入：</p>
-      <form id="login-form" onsubmit="handleLogin(event)">
-        <input type="password" id="login-password" required placeholder="請輸入密碼" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500 text-center mb-4">
-        <button type="submit" class="w-full py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-white font-medium transition">驗證並登入</button>
-        <p id="login-error" class="text-xs text-rose-500 mt-3 hidden"></p>
-      </form>
-    </div>
-  </div>
-
-  <!-- 快速連線 Modal -->
-  <div id="quick-connect-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-40">
-    <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-lg shadow-2xl">
-      <div class="flex justify-between items-center mb-2">
-        <h2 class="text-xl font-bold text-amber-400 flex items-center gap-2">
-          ⚡ 快速連線
-          <span class="text-xs bg-amber-950 text-amber-300 border border-amber-800 px-2 py-0.5 rounded font-normal">免新增/不儲存</span>
-        </h2>
-        <button onclick="hideQuickConnectModal()" class="text-slate-400 hover:text-white text-sm font-bold p-1">✕</button>
-      </div>
-      <p class="text-xs text-slate-400 mb-4">直接輸入主機連線資訊即可快速開始作業，憑據絕不寫入資料庫。</p>
-      <form id="quick-connect-form" onsubmit="handleQuickConnect(event)">
-        <div class="space-y-4">
-          <div class="grid grid-cols-3 gap-4">
-            <div class="col-span-2">
-              <label class="block text-sm text-slate-400 mb-1">主機 IP / 域名</label>
-              <input type="text" id="quick-host" required placeholder="192.168.1.1" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-amber-500">
-            </div>
-            <div>
-              <label class="block text-sm text-slate-400 mb-1">端口</label>
-              <input type="number" id="quick-port" value="22" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-amber-500">
-            </div>
-          </div>
-          <div>
-            <label class="block text-sm text-slate-400 mb-1">使用者名稱</label>
-            <input type="text" id="quick-username" required placeholder="例如: root / ubuntu" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-amber-500">
-          </div>
-          <div>
-            <label class="block text-sm text-slate-400 mb-1">驗證方式</label>
-            <select id="quick-auth-type" onchange="toggleQuickAuthType()" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-amber-500">
-              <option value="password">密碼驗證</option>
-              <option value="key">Ed25519 / RSA 私鑰驗證</option>
-            </select>
-          </div>
-          <div id="quick-password-field">
-            <label class="block text-sm text-slate-400 mb-1">密碼</label>
-            <input type="password" id="quick-password" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-amber-500">
-          </div>
-          <div id="quick-key-field" class="hidden">
-            <label class="block text-sm text-slate-400 mb-1">私鑰 (PEM 格式)</label>
-            <textarea id="quick-privatekey" rows="4" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-amber-500"></textarea>
-          </div>
-        </div>
-        <div class="mt-6 flex justify-end space-x-3">
-          <button type="button" onclick="hideQuickConnectModal()" class="px-4 py-2 border border-slate-800 rounded hover:bg-slate-800 transition text-sm">取消</button>
-          <button type="submit" class="px-5 py-2 bg-amber-600 hover:bg-amber-500 rounded text-white font-medium transition text-sm">即刻連線</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- 新增/編輯 Modal -->
-  <div id="modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-40">
-    <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-lg shadow-2xl">
-      <h2 id="modal-title" class="text-xl font-bold mb-4 text-emerald-400">連線設定</h2>
-      <form id="connection-form" onsubmit="saveConnection(event)">
-        <input type="hidden" id="conn-id">
-        <div class="space-y-4">
-          <div>
-            <label class="block text-sm text-slate-400 mb-1">名稱</label>
-            <input type="text" id="conn-name" required placeholder="例如: 阿里雲 / 騰訊雲" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
-          </div>
-          <div class="grid grid-cols-3 gap-4">
-            <div class="col-span-2">
-              <label class="block text-sm text-slate-400 mb-1">主機 IP / 域名</label>
-              <input type="text" id="conn-host" required placeholder="192.168.1.1" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
-            </div>
-            <div>
-              <label class="block text-sm text-slate-400 mb-1">端口</label>
-              <input type="number" id="conn-port" value="22" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
-            </div>
-          </div>
-          <div>
-            <label class="block text-sm text-slate-400 mb-1">使用者名稱</label>
-            <input type="text" id="conn-username" required placeholder="root" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
-          </div>
-          <div>
-            <label class="block text-sm text-slate-400 mb-1">驗證方式</label>
-            <select id="conn-auth-type" onchange="toggleAuthType()" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
-              <option value="password">密碼驗證</option>
-              <option value="key">Ed25519 / RSA 私鑰驗證</option>
-            </select>
-          </div>
-          <div id="password-field">
-            <label class="block text-sm text-slate-400 mb-1">密碼</label>
-            <input type="password" id="conn-password" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500">
-          </div>
-          <div id="key-field" class="hidden">
-            <label class="block text-sm text-slate-400 mb-1">私鑰 (PEM 格式)</label>
-            <textarea id="conn-privatekey" rows="4" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-emerald-500"></textarea>
-          </div>
-        </div>
-        <div class="mt-6 flex justify-end space-x-3">
-          <button type="button" onclick="hideModal()" class="px-4 py-2 border border-slate-800 rounded hover:bg-slate-800 transition">取消</button>
-          <button type="submit" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-white font-medium transition">儲存</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- 常用腳本管理 Modal -->
-  <div id="scripts-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-40">
-    <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-xl h-[70vh] flex flex-col shadow-2xl overflow-hidden">
-      <div class="pb-3 border-b border-slate-800 flex justify-between items-center bg-slate-900">
-        <h2 class="text-xl font-bold text-emerald-400">📜 常用腳本管理</h2>
-        <button onclick="hideScriptsModal()" class="text-slate-400 hover:text-white text-sm font-bold p-1">✕</button>
-      </div>
-      <form id="script-form" onsubmit="saveScript(event)" class="py-4 border-b border-slate-800 space-y-3">
-        <div class="grid grid-cols-3 gap-3">
-          <div class="col-span-1">
-            <input type="text" id="script-name" required placeholder="腳本名稱 (如: 更新)" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
-          </div>
-          <div class="col-span-2">
-            <input type="text" id="script-content" required placeholder="指令內容 (如: apt update)" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
-          </div>
-        </div>
-        <div class="flex justify-end">
-          <button type="submit" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-1.5 rounded text-xs font-semibold transition">
-            + 新增腳本
-          </button>
-        </div>
-      </form>
-      <div id="scripts-list" class="flex-1 overflow-y-auto pt-4 space-y-2 text-xs"></div>
-    </div>
-  </div>
-
-  <!-- SSH 密鑰生成器 Modal -->
-  <div id="keygen-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-40">
-    <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-2xl h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-fade-in">
-      <div class="pb-3 border-b border-slate-800 flex justify-between items-center bg-slate-900 mb-4">
-        <h2 class="text-xl font-bold text-emerald-400 flex items-center gap-1.5">🔑 SSH 密鑰生成器</h2>
-        <button onclick="hideKeygenModal()" class="text-slate-400 hover:text-white text-sm font-bold p-1">✕</button>
-      </div>
-      <div class="space-y-4 flex-1 flex flex-col overflow-hidden">
-        <div class="flex justify-between items-center flex-wrap gap-3 pb-3 border-b border-slate-800 bg-slate-900">
-          <div class="flex items-center gap-2">
-            <span class="text-xs text-slate-400 font-semibold select-none">金鑰算法:</span>
-            <select id="keygen-algorithm-select" class="bg-slate-950 text-emerald-400 border border-slate-800 rounded px-3 py-1.5 text-xs font-bold focus:outline-none focus:border-emerald-500">
-              <option value="ed25519" selected>ED25519 (高安全性、推薦)</option>
-              <option value="rsa-2048">RSA 2048 位元 (高相容性)</option>
-              <option value="rsa-4096">RSA 4096 位元 (極高安全性)</option>
-              <option value="ecdsa">ECDSA P-256 (橢圓曲線)</option>
-            </select>
-          </div>
-          <button onclick="generateSshKey(event)" class="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-1.5 rounded text-xs font-bold transition">
-            一鍵生成安全密鑰
-          </button>
-        </div>
-        <div id="key-gen-result" class="hidden flex-1 overflow-y-auto space-y-4 pr-1">
-          <div>
-            <div class="flex justify-between items-center mb-1.5">
-              <label class="text-xs text-slate-300 font-semibold">公鑰 (Public Key) - 請追加至遠端 VPS <code>~/.ssh/authorized_keys</code></label>
-              <button onclick="copyToClipboard('keygen-pubkey')" class="text-xs text-emerald-400 hover:text-emerald-300 hover:underline font-bold">複製公鑰</button>
-            </div>
-            <textarea id="keygen-pubkey" readonly rows="3" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs font-mono text-slate-200 select-all focus:outline-none leading-relaxed" spellcheck="false"></textarea>
-          </div>
-          <div>
-            <div class="flex justify-between items-center mb-1.5">
-              <label class="text-xs text-slate-300 font-semibold">私鑰 (Private Key - PEM 格式) - 請妥善儲存或直接用於主機連線配置</label>
-              <button onclick="copyToClipboard('keygen-privkey')" class="text-xs text-emerald-400 hover:text-emerald-300 hover:underline font-bold">複製私鑰</button>
-            </div>
-            <textarea id="keygen-privkey" readonly rows="8" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs font-mono text-slate-200 select-all focus:outline-none leading-relaxed" spellcheck="false"></textarea>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 終端機全螢幕容器 (z-50) -->
-  <div id="terminal-screen" class="fixed inset-0 bg-black hidden flex-col z-50">
-    <!-- 頂部資訊與控制欄 -->
-    <div class="bg-slate-900 px-4 py-2 flex justify-between items-center border-b border-slate-800 text-sm">
-      <div class="flex items-center space-x-3 flex-wrap gap-y-2">
-        <span id="active-terminal-title" class="font-mono text-slate-300">連線中...</span>
-        
-        <span class="text-slate-700 hidden md:inline">|</span>
-        <button onclick="toggleSftpModal()" class="text-xs bg-slate-800 hover:bg-slate-700 hover:text-emerald-300 text-emerald-400 border border-slate-700 px-2.5 py-1 rounded font-medium transition flex items-center gap-1.5">
-          📁 SFTP 檔案管理
-        </button>
-
-        <select id="terminal-script-select" onchange="runSelectedScript(this)" class="bg-slate-800 text-emerald-400 border border-slate-700 rounded px-2 py-1 text-xs font-medium focus:outline-none focus:border-emerald-500">
-          <option value="" disabled selected>📜 常用腳本...</option>
-        </select>
-
-        <!-- 🚀 T-4: 終端搜尋按鈕 -->
-        <button onclick="toggleTerminalSearch()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-2.5 py-1 rounded font-medium transition flex items-center gap-1" title="搜尋終端內容 (快捷鍵: Ctrl+Shift+F)">
-          🔍 搜尋
-        </button>
-
-        <!-- 🚀 T-4: 終端浮動搜尋控制列 -->
-        <div id="terminal-search-bar" class="hidden items-center bg-slate-800 border border-slate-700 px-2 py-0.5 rounded text-xs gap-1 animate-fade-in">
-          <input type="text" id="terminal-search-input" placeholder="搜尋終端關鍵字..." class="bg-slate-950 text-white px-2 py-0.5 rounded border border-slate-700 focus:outline-none focus:border-emerald-500 text-xs w-36" onkeydown="handleSearchKeydown(event)">
-          <button onclick="findPrev()" class="text-slate-300 hover:text-white px-1 font-bold" title="上一個 (Shift+Enter)">▲</button>
-          <button onclick="findNext()" class="text-slate-300 hover:text-white px-1 font-bold" title="下一個 (Enter)">▼</button>
-          <button onclick="toggleTerminalSearch()" class="text-slate-400 hover:text-rose-400 px-1 font-bold" title="關閉">✕</button>
-        </div>
-
-        <input type="file" id="sftp-file-input" class="hidden" onchange="handleFileSelect(event)">
-      </div>
-      <button onclick="closeTerminal()" class="bg-rose-700 hover:bg-rose-600 px-3 py-1 rounded text-white transition">
-        中斷連線
-      </button>
-    </div>
-
-    <!-- 工作區域：終端機容器 -->
-    <div class="flex-1 flex overflow-hidden">
-      <div id="terminal-container" class="flex-1 p-2 bg-black relative">
-         <div id="dropzone-overlay" class="absolute inset-0 bg-emerald-950/85 border-4 border-dashed border-emerald-400 hidden flex-col items-center justify-center z-40 pointer-events-none">
-           <div class="text-center p-6">
-             <svg class="w-16 h-16 text-emerald-400 mx-auto mb-4 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
-             </svg>
-             <p class="text-xl font-bold text-emerald-300">拖放到此處上傳至當前資料夾</p>
-             <p class="text-xs text-slate-400 mt-2">（將自動上傳至檔案管理器目前瀏覽的目錄中）</p>
-           </div>
-         </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 🚀 T-3: SFTP 檔案管理器 (新增新建檔案/目錄與手動跳轉路徑) -->
-  <div id="sftp-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-[60]">
-    <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-4xl h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-fade-in">
-      
-      <div class="pb-3 border-b border-slate-800 flex justify-between items-center bg-slate-900">
-        <h3 class="font-bold text-emerald-400 text-base flex items-center gap-1.5">
-          📁 SFTP 遠端檔案管理器
-        </h3>
-        <button onclick="toggleSftpModal()" class="text-slate-400 hover:text-white text-sm font-bold p-1">✕</button>
-      </div>
-      
-      <!-- 控制按鈕工具列 -->
-      <div class="py-3 border-b border-slate-800 bg-slate-900 flex items-center gap-2 justify-between flex-wrap">
-        <div class="flex items-center gap-2">
-          <button onclick="sftpGoUp()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1.5 rounded text-xs font-semibold" title="返回上層目錄">
-            向上 ↩
-          </button>
-          <button onclick="refreshSftpList()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1.5 rounded text-xs font-semibold" title="重新整理列表">
-            整理 ↻
-          </button>
-          <!-- 🚀 T-3: 新建資料夾與空檔案 -->
-          <button onclick="sftpCreateFolder()" class="bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 px-2.5 py-1.5 rounded text-xs font-semibold flex items-center gap-1">
-            + 新建目錄
-          </button>
-          <button onclick="sftpCreateFile()" class="bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 px-2.5 py-1.5 rounded text-xs font-semibold flex items-center gap-1">
-            + 新建檔案
-          </button>
-        </div>
-        <button onclick="triggerFileInput()" class="text-xs bg-emerald-600 hover:bg-emerald-500 text-white px-3.5 py-1.5 rounded font-semibold transition flex items-center gap-1.5">
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
-          </svg>
-          上傳檔案
-        </button>
-      </div>
-
-      <!-- 🚀 T-3: 麵包屑導航條與「手動絕對路徑輸入跳轉」 -->
-      <div class="p-2 border-b border-slate-800 bg-slate-950 flex items-center gap-2">
-        <span class="text-xs text-slate-500 font-mono select-none">路徑:</span>
-        <div id="sftp-breadcrumbs" class="flex-1 flex items-center flex-wrap gap-1 text-[11px] font-mono select-none"></div>
-        <button onclick="sftpPromptNavigate()" class="text-[11px] text-slate-400 hover:text-emerald-300 bg-slate-900 border border-slate-800 px-2 py-0.5 rounded font-mono" title="手動輸入絕對路徑直接跳轉">
-          ✏️ 輸入跳轉
-        </button>
-      </div>
-
-      <!-- 檔案列表 -->
-      <div id="sftp-file-list" class="flex-1 overflow-y-auto p-4 space-y-1 text-xs font-mono select-none"></div>
-    </div>
-  </div>
-
-  <!-- 🚀 T-3: 統一通用 SFTP 互動輸入彈窗 (mkdir, touch, rename, chmod, jump) -->
-  <div id="sftp-prompt-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-[80]">
-    <div class="bg-slate-900 border border-slate-800 rounded-lg p-5 w-full max-w-sm shadow-2xl animate-fade-in">
-      <h3 id="sftp-prompt-title" class="text-sm font-bold text-slate-200 mb-3">請輸入</h3>
-      <input type="text" id="sftp-prompt-input" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono mb-4">
-      <div class="flex justify-end space-x-2">
-        <button onclick="closeSftpPrompt()" class="px-3 py-1.5 border border-slate-800 rounded text-slate-400 hover:bg-slate-800 text-xs transition">取消</button>
-        <button id="sftp-prompt-confirm-btn" class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-semibold transition">確認</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 遠端線上檔案編輯器 Modal (z-[70]) -->
-  <div id="editor-modal" class="fixed inset-0 bg-black/85 hidden items-center justify-center p-4 z-[70]">
-    <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-3xl h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-fade-in">
-      <div class="pb-3 border-b border-slate-800 flex justify-between items-center bg-slate-900">
-        <h3 id="editor-file-title" class="font-bold text-amber-400 text-sm font-mono truncate max-w-[80%]">📝 編輯遠端檔案</h3>
-        <button onclick="closeFileEditor()" class="text-slate-400 hover:text-white text-xs">取消 ✕</button>
-      </div>
-      <textarea id="editor-textarea" class="flex-1 w-full bg-slate-950 border border-slate-800 rounded p-4 text-xs font-mono text-slate-100 focus:outline-none focus:border-emerald-500 resize-none mt-4 whitespace-pre overflow-auto leading-relaxed" spellcheck="false"></textarea>
-      <div class="mt-4 flex justify-end space-x-3">
-        <button onclick="closeFileEditor()" class="px-4 py-2 border border-slate-800 rounded hover:bg-slate-800 text-xs transition">取消</button>
-        <button onclick="saveRemoteFile()" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-white text-xs font-semibold transition flex items-center gap-1.5">
-          儲存變更
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 傳輸處理中進度條 -->
-  <div id="upload-overlay" class="fixed inset-0 bg-black/70 hidden items-center justify-center p-4 z-50">
-    <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-sm shadow-2xl text-center">
-      <h3 class="text-lg font-bold text-emerald-400 mb-2">傳輸處理中 (SFTP)</h3>
-      <p id="upload-file-info" class="text-sm text-slate-300 font-mono truncate mb-4">filename.txt</p>
-      <div class="w-full bg-slate-800 rounded-full h-4 overflow-hidden mb-3">
-        <div id="upload-progress-bar" class="bg-emerald-500 h-full w-0 transition-all duration-150"></div>
-      </div>
-      <div class="flex justify-between text-xs text-slate-400 font-mono">
-        <span id="upload-progress-percent">處理中...</span>
-        <span id="upload-progress-size">0.00 / 0.00 MB</span>
-      </div>
-      <div class="mt-6 flex justify-center">
-        <button onclick="cancelUpload()" class="px-4 py-1.5 bg-rose-700 hover:bg-rose-600 rounded text-sm text-white font-medium transition">取消</button>
-      </div>
-    </div>
-  </div>
-
-  <script src="/app.js"></script>
-</body>
-</html>
 
 ````
 
@@ -1893,621 +1428,525 @@ function hideKeygenModal() {
 
 ````
 
-## File: README.md
-````md
-# cf-webssh
+## File: public/index.html
+````html
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Cloudflare WebSSH 工作台</title>
+  
+  <!-- 網站 Favicon (使用嵌入式 SVG 終端圖示) -->
+  <link rel="icon" type="image/svg+xml" href='data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="25" fill="%23020617" stroke="%2310b981" stroke-width="4"/><text x="18" y="70" font-family="monospace" font-size="62" font-weight="bold" fill="%2310b981">&gt;_</text></svg>'>
 
-一個基於 Cloudflare Workers 平台建置的輕量級、高度安全、完全模組化解耦的互動式 WebSSH 終端機與 SFTP 遠端檔案管理工作台。
+  <!-- 樣式依賴 -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/vendor.css">
+  <script src="/vendor.js"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans min-h-screen">
 
-本專案利用 Cloudflare 原生 TCP 接口（透過相容性標誌 `nodejs_compat` 啟用 `cloudflare:sockets`）與遠端主機建立安全的 SSH 通道，並在瀏覽器前端使用 `xterm.js` 提供互動性終端、視覺化 SFTP 檔案管理器、遠端檔案線上編輯器，以及本地安全密鑰生成器。
+  <div id="app" class="container mx-auto p-4 sm:p-6 max-w-6xl">
+    <!-- 📱 響應式 Header: 手機自動垂直堆疊，按鈕自動換行且不折字 -->
+    <header class="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-800 pb-4 gap-4">
+      <h1 class="text-2xl font-bold tracking-wider text-emerald-400 flex items-center gap-2 select-none">
+        <svg class="w-8 h-8 text-emerald-400" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="100" height="100" rx="25" fill="#020617" stroke="currentColor" stroke-width="6"/>
+          <text x="18" y="70" font-family="monospace" font-size="62" font-weight="bold" fill="currentColor">&gt;_</text>
+        </svg>
+        <span>CF-WebSSH</span>
+        <span id="app-version" class="text-xs bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded font-mono font-medium select-none ml-1">v0.0.0</span>
+      </h1>
+      
+      <!-- 按鈕容器：手機端支援自動換行與彈性撐開，加上 whitespace-nowrap 徹底防止字體直式擠壓 -->
+      <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
+        <button id="logout-btn" onclick="handleLogout()" class="hidden bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded font-medium transition text-xs sm:text-sm whitespace-nowrap">
+          登出
+        </button>
+        <button onclick="showKeygenModal()" class="bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 px-3 py-1.5 rounded font-medium transition text-xs sm:text-sm whitespace-nowrap flex-1 sm:flex-initial text-center">
+          🔑 密鑰生成
+        </button>
+        <button onclick="showScriptsModal()" class="bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 px-3 py-1.5 rounded font-medium transition text-xs sm:text-sm whitespace-nowrap flex-1 sm:flex-initial text-center">
+          📜 常用腳本
+        </button>
+        <button onclick="showQuickConnectModal()" class="bg-amber-600 hover:bg-amber-500 text-white px-3.5 py-1.5 rounded font-medium transition text-xs sm:text-sm whitespace-nowrap flex-1 sm:flex-initial text-center">
+          ⚡ 快速連線
+        </button>
+        <button onclick="showAddModal()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3.5 py-1.5 rounded font-medium transition text-xs sm:text-sm whitespace-nowrap flex-1 sm:flex-initial text-center">
+          + 新增伺服器
+        </button>
+      </div>
+    </header>
 
-## 🎯 專案特點
+    <main>
+      <div id="connections-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6"></div>
+      <div id="empty-state" class="hidden text-center py-20 text-slate-500">
+        目前沒有儲存的伺服器，點擊右上角新增連線。
+      </div>
+    </main>
+  </div>
 
-- **無伺服器架構**：完全依賴 Cloudflare Workers 邊緣網路，無需部署與維護傳統的 WebSSH 後端伺服器（如 Bastion、Guacamole 等）。
-- **解耦與模組化分檔管理**：
-  - 本地開發專案採用高維護性分檔結構：安全加密（`crypto.js`）、終端通訊（`ssh.js`）、SFTP 管理（`sftp.js`）、主路由入口（`index.js`），以及前端頁面（`index.html`）與核心控制指令碼（`app.js`）。
-  - **極速載入**：在構建編譯時（`build.mjs`），透過自訂的 esbuild 插件，自動將前端 JavaScript 程式碼轉化為靜態字串併入 Worker 的部署檔中，使您的專案既具有本地開發的整潔度，又擁有極佳的邊緣端載入速度。
-- **動態版本號同步**：
-  - 主畫面標題旁與登入介面會自動展示當前的系統版本號（例如 `v2.0.0`），該版本號完全由構建指令碼在打包編譯時，自動、動態地與 `package.json` 內的 `"version"` 欄位進行實時同步。
-- **全庫零知識（Zero-Knowledge）端到端對稱加密**：
-  - 當設定管理員密碼（環境變數 `ADMIN_PASSWORD`）時，系統會自動在 Worker 記憶體中利用您的密碼雜湊衍生出 256 位元的對稱金鑰。
-  - 主機連線欄位（包括主機 IP/域名、主機名稱、端口、使用者名稱、連線密碼與私鑰）在寫入 Cloudflare KV 前，**皆全數透過原生 WebCrypto API 執行強度的 AES-GCM-256 對稱加密**。
-  - **安全性**：即便 Cloudflare 帳戶或 KV 資料庫整庫被導出洩漏，攻擊者也完全無法得知您管理的 VPS 名稱、IP 位置與登入帳密。
-  - **向下相容**：系統具備智慧判定，若偵測到未加密的舊有資料會自動以明文格式讀取，不影響您原先已儲存的配置。您只需在網頁上對舊主機點選「編輯 -> 儲存」，系統便會自動將其無損升級為加密狀態。
-- **一體化 SFTP 遠端檔案管理器**：
-  - 前端頂部整合為單一 **「📁 SFTP 檔案管理」** 彈窗視窗，可直接在終端機畫面上方彈出，體驗一體化。
-  - **📝 遠端檔案線上編輯器**：點選文字格式檔案（如 `.conf`、`.sh`、`.env`、`.json`、`.yml` 等）旁的 **「編輯」** 按鈕，右側會直接拉出一個大面積的代碼編輯器彈窗，修改後點擊「儲存變更」即可即時覆寫寫入 VPS，免去使用終端機 `vim` / `nano` 的繁瑣步驟。
-  - **「類 Windows」麵包屑導航**：自動將目前的絕對路徑分割為可點選的級聯節點（如 `🏠 / root / apps`），點選即可快速跨目錄跳轉。
-  - **檔案瀏覽與導航**：點選資料夾可直接進入，支援目錄深層導航、向上返回與重新整理。
-  - **檔案下載與完整性流控制（Backpressure）**：採用 Web 串流控制，發送一塊數據確認一塊，絕不撐爆 Worker 記憶體，支援大檔案的安全流式下載。
-  - **拖放與手動上傳**：支援將電腦檔案直接拖曳至終端機畫面上傳，或點選視窗內的「上傳檔案」手動選取，自動上傳至目前瀏覽的目錄中。
-  - **檔案刪除**：支援一鍵永久刪除遠端 VPS 上的檔案或空資料夾。
-- **內建多算法安全 SSH 密鑰生成器**：
-  - 主畫面 Header 新增獨立的 **「🔑 密鑰生成」** 彈窗。完全由瀏覽器端 WebCrypto 引擎本地生成，保證極限物理安全。
-  - **支援四種主流算法**：`ED25519` (高安全、推薦)、`RSA-2048` (高相容)、`RSA-4096` (極高安全)、`ECDSA P-256` (橢圓曲線)。
-  - **標準 OpenSSH 公鑰序列化編譯**：內建 OpenSSH 公鑰字節序列化解析器，自動將 DER 編碼編譯成可以直接寫入 Linux `authorized_keys` 的標準 `ssh-rsa`、`ecdsa-sha2-nistp256` 或 `ssh-ed25519` 等明文字串，一鍵複製使用。
-- **自訂一鍵常用腳本與即時注入**：
-  - 主畫面新增 **「📜 常用腳本」** 管理彈窗，提供視覺化新增與刪除自訂腳本（如系統更新、Docker 狀態檢視等）。
-  - **一鍵終端機注入**：當您在 SSH 連線中，點擊頂部 **「📜 常用腳本...」** 下拉選單，對應的指令將即時輸入到您的終端中並自動送出執行。
-  - **明文儲存**：常用腳本指令在 KV 中以純文字 JSON 格式儲存，便於您在 Cloudflare 後台直接檢視。
-- **免延遲樂觀更新機制 (Optimistic UI Updates)**：
-  - 由於 Cloudflare KV 的寫入具有「最終一致性」的延遲（寫入後通常需要 1~3 秒才會在全球節點生效），原先新增腳本後可能無法立刻在畫面上重新整理出來。
-  - 本專案實作了**樂觀更新技術**：前端在內存中維護最新的腳本快取，新增/刪除時會在 0 毫秒內立刻反應在介面上，背景則由異步靜默向後端 KV 進行儲存，帶來極速、無延遲的流暢體驗。
-- **原生 HTML5 卡片拖曳排序**：
-  - 主畫面的伺服器卡片具備拖拽手把（右上角三橫線圖示），滑鼠指過去會自動變更為抓取手勢（`cursor-grab`）。
-  - **拖拽與保存**：您可以隨意拖動卡片重新排序，落點處會具備高亮邊框指示。當放開滑鼠時，新順序陣列會自動異步儲存至 KV 上的 `connections_order` 清單中，永久保存您的自訂卡片順序。
-- **優雅的系統圖示與 LOGO**：
-  - **網站 Favicon**：採用動態嵌入的 SVG Data-URI 技術，完美替換分頁標籤上的地球預設圖標。
-  - **主視覺 LOGO**：主畫面與登入介面皆整合了極具現代感的終端機游標圖示（`>_`）。
-- **優化的 xterm.js 終端**：
-  - **自動聚焦 (Auto Focus)**：連線載入完成後自動鎖定焦點，無需手動用滑鼠點擊即可直接開始打字輸入。
-  - **視窗尺寸動態同步**：支援瀏覽器視窗縮放時，自動向遠端虛擬終端（Pseudo-terminal, PTY）發送 `resize` 訊號。
-- **Cloudflare Workers 專屬相容性適配**：
-  - 針對 Workers 執行環境底層 BoringSSL 在計算 **X25519 DH 共享金鑰** 時的限制，主動排除 `curve25519` 相關的金鑰交換演算法（KEX），改用 NIST 標準曲線（如 `ecdh-sha2-nistp256`）或有限域 Diffie-Hellman 演算法進行握手。
-  - 針對 Workers 的 `node:crypto` 串流解密不完整支援 AEAD 模式（如 `chacha20-poly1305`、`aes-gcm`）而會拋出 `No auth tag provided` 的限制，主動在握手階段限制僅協商使用 **CTR 計數器模式** 與 **CBC 模式**（如 `aes256-ctr`），配合獨立的 HMAC 校驗（如 `hmac-sha2-256`），確保資料傳輸穩定不中斷。
+  <!-- 登入遮罩 -->
+  <div id="login-overlay" class="fixed inset-0 bg-slate-950 flex hidden items-center justify-center p-4 z-50 animate-fade-in">
+    <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-sm shadow-2xl text-center">
+      <div class="flex justify-center mb-4">
+        <svg class="w-16 h-16 text-emerald-400" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="100" height="100" rx="25" fill="#020617" stroke="currentColor" stroke-width="6"/>
+          <text x="18" y="70" font-family="monospace" font-size="62" font-weight="bold" fill="currentColor">&gt;_</text>
+        </svg>
+      </div>
+      <h1 class="text-2xl font-bold tracking-wider text-emerald-400 mb-2">
+        ⚡ CF-WebSSH 
+        <span id="login-app-version" class="text-xs bg-slate-950 text-slate-500 px-1.5 py-0.5 rounded font-mono font-medium ml-1 select-none">v0.0.0</span>
+      </h1>
+      <p class="text-sm text-slate-400 mb-6">此工作台已受管理密碼保護，請輸入：</p>
+      <form id="login-form" onsubmit="handleLogin(event)">
+        <input type="password" id="login-password" required placeholder="請輸入密碼" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500 text-center mb-4">
+        <button type="submit" class="w-full py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-white font-medium transition">驗證並登入</button>
+        <p id="login-error" class="text-xs text-rose-500 mt-3 hidden"></p>
+      </form>
+    </div>
+  </div>
 
-## 📁 專案目錄結構
+  <!-- 快速連線 Modal -->
+  <div id="quick-connect-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-40">
+    <div class="bg-slate-900 border border-slate-800 rounded-lg p-5 sm:p-6 w-full max-w-lg shadow-2xl">
+      <div class="flex justify-between items-center mb-2">
+        <h2 class="text-xl font-bold text-amber-400 flex items-center gap-2">
+          ⚡ 快速連線
+          <span class="text-xs bg-amber-950 text-amber-300 border border-amber-800 px-2 py-0.5 rounded font-normal">免新增/不儲存</span>
+        </h2>
+        <button onclick="hideQuickConnectModal()" class="text-slate-400 hover:text-white text-sm font-bold p-1">✕</button>
+      </div>
+      <p class="text-xs text-slate-400 mb-4">直接輸入主機連線資訊即可快速開始作業，憑據絕不寫入資料庫。</p>
+      <form id="quick-connect-form" onsubmit="handleQuickConnect(event)">
+        <div class="space-y-4">
+          <!-- 📱 手機端自動轉為單欄，平板以上維持 3 欄 -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+            <div class="sm:col-span-2">
+              <label class="block text-xs sm:text-sm text-slate-400 mb-1">主機 IP / 域名</label>
+              <input type="text" id="quick-host" required placeholder="192.168.1.1" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-amber-500 text-xs sm:text-sm">
+            </div>
+            <div>
+              <label class="block text-xs sm:text-sm text-slate-400 mb-1">端口</label>
+              <input type="number" id="quick-port" value="22" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-amber-500 text-xs sm:text-sm">
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs sm:text-sm text-slate-400 mb-1">使用者名稱</label>
+            <input type="text" id="quick-username" required placeholder="例如: root / ubuntu" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-amber-500 text-xs sm:text-sm">
+          </div>
+          <div>
+            <label class="block text-xs sm:text-sm text-slate-400 mb-1">驗證方式</label>
+            <select id="quick-auth-type" onchange="toggleQuickAuthType()" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-amber-500 text-xs sm:text-sm">
+              <option value="password">密碼驗證</option>
+              <option value="key">Ed25519 / RSA 私鑰驗證</option>
+            </select>
+          </div>
+          <div id="quick-password-field">
+            <label class="block text-xs sm:text-sm text-slate-400 mb-1">密碼</label>
+            <input type="password" id="quick-password" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-amber-500 text-xs sm:text-sm">
+          </div>
+          <div id="quick-key-field" class="hidden">
+            <label class="block text-xs sm:text-sm text-slate-400 mb-1">私鑰 (PEM 格式)</label>
+            <textarea id="quick-privatekey" rows="4" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-amber-500"></textarea>
+          </div>
+        </div>
+        <div class="mt-6 flex justify-end space-x-3">
+          <button type="button" onclick="hideQuickConnectModal()" class="px-4 py-2 border border-slate-800 rounded hover:bg-slate-800 transition text-xs sm:text-sm">取消</button>
+          <button type="submit" class="px-5 py-2 bg-amber-600 hover:bg-amber-500 rounded text-white font-medium transition text-xs sm:text-sm">即刻連線</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
-```text
-cf-webssh/
-├── wrangler.toml              # Cloudflare Wrangler 配置文件
-├── package.json               # 項目與套件依賴配置
-├── build.mjs                  # esbuild 自訂構建與打包指令碼 (含解耦與自動版號注入插件)
-├── mocks/
-│   └── cpu-features.js        # cpu-features 機制模擬器
-├── public/
-│   ├── index.html             # 前台純淨 HTML 排版模版
-│   └── app.js                 # 獨立的前台 JavaScript 核心控制器
-└── src/
-    ├── crypto.js              # 獨立的對稱加密模組 (AES-GCM-256)
-    ├── ssh.js                 # 獨立的 SSH 終端通訊模組
-    ├── sftp.js                # 獨立的 SFTP 管理通訊模組
-    └── index.js               # 主入口路由分發與資產服務器
-```
+  <!-- 新增/編輯 Modal -->
+  <div id="modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-40">
+    <div class="bg-slate-900 border border-slate-800 rounded-lg p-5 sm:p-6 w-full max-w-lg shadow-2xl">
+      <h2 id="modal-title" class="text-xl font-bold mb-4 text-emerald-400">連線設定</h2>
+      <form id="connection-form" onsubmit="saveConnection(event)">
+        <input type="hidden" id="conn-id">
+        <div class="space-y-4">
+          <div>
+            <label class="block text-xs sm:text-sm text-slate-400 mb-1">名稱</label>
+            <input type="text" id="conn-name" required placeholder="例如: 阿里雲 / 騰訊雲" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500 text-xs sm:text-sm">
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+            <div class="sm:col-span-2">
+              <label class="block text-xs sm:text-sm text-slate-400 mb-1">主機 IP / 域名</label>
+              <input type="text" id="conn-host" required placeholder="192.168.1.1" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500 text-xs sm:text-sm">
+            </div>
+            <div>
+              <label class="block text-xs sm:text-sm text-slate-400 mb-1">端口</label>
+              <input type="number" id="conn-port" value="22" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500 text-xs sm:text-sm">
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs sm:text-sm text-slate-400 mb-1">使用者名稱</label>
+            <input type="text" id="conn-username" required placeholder="root" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500 text-xs sm:text-sm">
+          </div>
+          <div>
+            <label class="block text-xs sm:text-sm text-slate-400 mb-1">驗證方式</label>
+            <select id="conn-auth-type" onchange="toggleAuthType()" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500 text-xs sm:text-sm">
+              <option value="password">密碼驗證</option>
+              <option value="key">Ed25519 / RSA 私鑰驗證</option>
+            </select>
+          </div>
+          <div id="password-field">
+            <label class="block text-xs sm:text-sm text-slate-400 mb-1">密碼</label>
+            <input type="password" id="conn-password" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-emerald-500 text-xs sm:text-sm">
+          </div>
+          <div id="key-field" class="hidden">
+            <label class="block text-xs sm:text-sm text-slate-400 mb-1">私鑰 (PEM 格式)</label>
+            <textarea id="conn-privatekey" rows="4" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-emerald-500"></textarea>
+          </div>
+        </div>
+        <div class="mt-6 flex justify-end space-x-3">
+          <button type="button" onclick="hideModal()" class="px-4 py-2 border border-slate-800 rounded hover:bg-slate-800 transition text-xs sm:text-sm">取消</button>
+          <button type="submit" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-white font-medium transition text-xs sm:text-sm">儲存</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
-## ⚙️ 系統需求
+  <!-- 常用腳本管理 Modal -->
+  <div id="scripts-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-40">
+    <div class="bg-slate-900 border border-slate-800 rounded-lg p-5 sm:p-6 w-full max-w-xl h-[75vh] flex flex-col shadow-2xl overflow-hidden">
+      <div class="pb-3 border-b border-slate-800 flex justify-between items-center bg-slate-900">
+        <h2 class="text-lg sm:text-xl font-bold text-emerald-400">📜 常用腳本管理</h2>
+        <button onclick="hideScriptsModal()" class="text-slate-400 hover:text-white text-sm font-bold p-1">✕</button>
+      </div>
+      <form id="script-form" onsubmit="saveScript(event)" class="py-3 border-b border-slate-800 space-y-3">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
+          <div class="col-span-1">
+            <input type="text" id="script-name" required placeholder="腳本名稱 (如: 更新)" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
+          </div>
+          <div class="sm:col-span-2">
+            <input type="text" id="script-content" required placeholder="指令內容 (如: apt update)" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
+          </div>
+        </div>
+        <div class="flex justify-end">
+          <button type="submit" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-1.5 rounded text-xs font-semibold transition">
+            + 新增腳本
+          </button>
+        </div>
+      </form>
+      <div id="scripts-list" class="flex-1 overflow-y-auto pt-4 space-y-2 text-xs"></div>
+    </div>
+  </div>
 
-- [Cloudflare 帳戶](https://dash.cloudflare.com/)
-- [Node.js](https://nodejs.org/) (建議使用 v18.0.0 以上之版本)
+  <!-- SSH 密鑰生成器 Modal -->
+  <div id="keygen-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-40">
+    <div class="bg-slate-900 border border-slate-800 rounded-lg p-5 sm:p-6 w-full max-w-2xl h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-fade-in">
+      <div class="pb-3 border-b border-slate-800 flex justify-between items-center bg-slate-900 mb-4">
+        <h2 class="text-lg sm:text-xl font-bold text-emerald-400 flex items-center gap-1.5">🔑 SSH 密鑰生成器</h2>
+        <button onclick="hideKeygenModal()" class="text-slate-400 hover:text-white text-sm font-bold p-1">✕</button>
+      </div>
+      <div class="space-y-4 flex-1 flex flex-col overflow-hidden">
+        <div class="flex justify-between items-center flex-wrap gap-2 sm:gap-3 pb-3 border-b border-slate-800 bg-slate-900">
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-slate-400 font-semibold select-none">金鑰算法:</span>
+            <select id="keygen-algorithm-select" class="bg-slate-950 text-emerald-400 border border-slate-800 rounded px-2 sm:px-3 py-1.5 text-xs font-bold focus:outline-none focus:border-emerald-500">
+              <option value="ed25519" selected>ED25519 (推薦)</option>
+              <option value="rsa-2048">RSA 2048 位元</option>
+              <option value="rsa-4096">RSA 4096 位元</option>
+              <option value="ecdsa">ECDSA P-256</option>
+            </select>
+          </div>
+          <button onclick="generateSshKey(event)" class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-1.5 rounded text-xs font-bold transition">
+            一鍵生成
+          </button>
+        </div>
+        <div id="key-gen-result" class="hidden flex-1 overflow-y-auto space-y-4 pr-1">
+          <div>
+            <div class="flex justify-between items-center mb-1.5">
+              <label class="text-xs text-slate-300 font-semibold">公鑰 (Public Key)</label>
+              <button onclick="copyToClipboard('keygen-pubkey')" class="text-xs text-emerald-400 hover:text-emerald-300 hover:underline font-bold">複製</button>
+            </div>
+            <textarea id="keygen-pubkey" readonly rows="3" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs font-mono text-slate-200 select-all focus:outline-none leading-relaxed" spellcheck="false"></textarea>
+          </div>
+          <div>
+            <div class="flex justify-between items-center mb-1.5">
+              <label class="text-xs text-slate-300 font-semibold">私鑰 (Private Key - PEM)</label>
+              <button onclick="copyToClipboard('keygen-privkey')" class="text-xs text-emerald-400 hover:text-emerald-300 hover:underline font-bold">複製</button>
+            </div>
+            <textarea id="keygen-privkey" readonly rows="8" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs font-mono text-slate-200 select-all focus:outline-none leading-relaxed" spellcheck="false"></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
-## 🚀 部署指南
+  <!-- 終端機全螢幕容器 (z-50) -->
+  <div id="terminal-screen" class="fixed inset-0 bg-black hidden flex-col z-50">
+    <!-- 📱 終端頂部工具列自適應排版 -->
+    <div class="bg-slate-900 px-3 py-2 flex justify-between items-center border-b border-slate-800 text-xs sm:text-sm gap-2">
+      <div class="flex items-center space-x-2 flex-wrap gap-y-1.5 flex-1 min-w-0">
+        <span id="active-terminal-title" class="font-mono text-slate-300 truncate max-w-[120px] sm:max-w-xs">連線中...</span>
+        
+        <span class="text-slate-700 hidden sm:inline">|</span>
+        <button onclick="toggleSftpModal()" class="text-xs bg-slate-800 hover:bg-slate-700 hover:text-emerald-300 text-emerald-400 border border-slate-700 px-2 py-1 rounded font-medium transition flex items-center gap-1 whitespace-nowrap">
+          📁 SFTP
+        </button>
 
-### 方法 A：透過 GitHub Actions 自動部署（推薦）
+        <select id="terminal-script-select" onchange="runSelectedScript(this)" class="bg-slate-800 text-emerald-400 border border-slate-700 rounded px-2 py-1 text-xs font-medium focus:outline-none focus:border-emerald-500 max-w-[100px] sm:max-w-none">
+          <option value="" disabled selected>📜 腳本...</option>
+        </select>
 
-本專案已內建完整的 CI/CD 自動化工作流。當您將專案推送到 GitHub 的 `main` 分支時，系統將會**全自動處理 KV 命名空間**：
+        <button onclick="toggleTerminalSearch()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-2 py-1 rounded font-medium transition flex items-center gap-1 whitespace-nowrap" title="搜尋 (Ctrl+Shift+F)">
+          🔍
+        </button>
 
-1. **fork 本項目**。
-2. 在 GitHub 專案的 `Settings -> Secrets and variables -> Actions` 中，新增一個名為 `CLOUDFLARE_API_TOKEN` 的 Secret（此 Token 需具備編輯 Workers 與 KV 命名空間的權限）。
-3. 將代碼推送至 `main` 分支。
-4. GitHub Actions 工作流（`.github/workflows/deploy.yml`）會自動偵測您的 Cloudflare 帳戶中是否已存在 `WEBSSH_KV` 命名空間。若不存在，將自動為您建立，並**自動動態填入** `wrangler.toml` 中的 `KV_NAMESPACE_ID_PLACEHOLDER`，最後完成編譯與部署。您無需進行任何手動文件修改。
+        <div id="terminal-search-bar" class="hidden items-center bg-slate-800 border border-slate-700 px-2 py-0.5 rounded text-xs gap-1 animate-fade-in">
+          <input type="text" id="terminal-search-input" placeholder="搜尋關鍵字..." class="bg-slate-950 text-white px-2 py-0.5 rounded border border-slate-700 focus:outline-none focus:border-emerald-500 text-xs w-28 sm:w-36" onkeydown="handleSearchKeydown(event)">
+          <button onclick="findPrev()" class="text-slate-300 hover:text-white px-1 font-bold">▲</button>
+          <button onclick="findNext()" class="text-slate-300 hover:text-white px-1 font-bold">▼</button>
+          <button onclick="toggleTerminalSearch()" class="text-slate-400 hover:text-rose-400 px-1 font-bold">✕</button>
+        </div>
 
-> 💡 **如何在使用 GitHub Actions 部署時設置登入密碼與 AES 加密金鑰？**
-> 請直接登入 [Cloudflare Dashboard](https://dash.cloudflare.com/)，進入您的 Workers 項目，點選 `Settings` -> `Variables` -> `Environment Variables`，手動新增變數 `ADMIN_PASSWORD`。為了安全起見，請務必將其儲存類型設為 **Encrypt (Secret)**。此密碼一經儲存，除了用於登入外，還會自動在後端作為 AES-GCM 金鑰。
+        <input type="file" id="sftp-file-input" class="hidden" onchange="handleFileSelect(event)">
+      </div>
+      <button onclick="closeTerminal()" class="bg-rose-700 hover:bg-rose-600 px-2.5 py-1 rounded text-white text-xs sm:text-sm whitespace-nowrap transition">
+        中斷
+      </button>
+    </div>
 
----
+    <!-- 終端容器 -->
+    <div class="flex-1 flex overflow-hidden">
+      <div id="terminal-container" class="flex-1 p-2 bg-black relative">
+         <div id="dropzone-overlay" class="absolute inset-0 bg-emerald-950/85 border-4 border-dashed border-emerald-400 hidden flex-col items-center justify-center z-40 pointer-events-none">
+           <div class="text-center p-4">
+             <svg class="w-12 h-12 text-emerald-400 mx-auto mb-2 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+             </svg>
+             <p class="text-lg font-bold text-emerald-300">放開以開始上傳</p>
+           </div>
+         </div>
+      </div>
+    </div>
+  </div>
 
-### 方法 B：從本機手動部署
+  <!-- SFTP 檔案管理器 Modal -->
+  <div id="sftp-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-3 sm:p-4 z-[60]">
+    <div class="bg-slate-900 border border-slate-800 rounded-lg p-4 sm:p-6 w-full max-w-4xl h-[90vh] sm:h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-fade-in">
+      
+      <div class="pb-2.5 border-b border-slate-800 flex justify-between items-center bg-slate-900">
+        <h3 class="font-bold text-emerald-400 text-sm sm:text-base flex items-center gap-1.5">
+          📁 SFTP 遠端檔案管理器
+        </h3>
+        <button onclick="toggleSftpModal()" class="text-slate-400 hover:text-white text-sm font-bold p-1">✕</button>
+      </div>
+      
+      <!-- 控制按鈕工具列 -->
+      <div class="py-2.5 border-b border-slate-800 bg-slate-900 flex items-center gap-1.5 sm:gap-2 justify-between flex-wrap">
+        <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+          <button onclick="sftpGoUp()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 sm:px-2.5 py-1 rounded text-xs font-semibold whitespace-nowrap">
+            向上 ↩
+          </button>
+          <button onclick="refreshSftpList()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 sm:px-2.5 py-1 rounded text-xs font-semibold whitespace-nowrap">
+            整理 ↻
+          </button>
+          <button onclick="sftpCreateFolder()" class="bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 px-2 sm:px-2.5 py-1 rounded text-xs font-semibold whitespace-nowrap">
+            + 目錄
+          </button>
+          <button onclick="sftpCreateFile()" class="bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 px-2 sm:px-2.5 py-1 rounded text-xs font-semibold whitespace-nowrap">
+            + 檔案
+          </button>
+        </div>
+        <button onclick="triggerFileInput()" class="text-xs bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1 rounded font-semibold transition flex items-center gap-1 whitespace-nowrap">
+          上傳
+        </button>
+      </div>
 
-如果您不使用 GitHub Actions，而是選擇直接從本機進行手動部署：
+      <!-- 麵包屑與跳轉 -->
+      <div class="p-2 border-b border-slate-800 bg-slate-950 flex items-center gap-2">
+        <span class="text-[11px] text-slate-500 font-mono select-none">路徑:</span>
+        <div id="sftp-breadcrumbs" class="flex-1 flex items-center flex-wrap gap-1 text-[11px] font-mono select-none overflow-hidden"></div>
+        <button onclick="sftpPromptNavigate()" class="text-[10px] text-slate-400 hover:text-emerald-300 bg-slate-900 border border-slate-800 px-1.5 py-0.5 rounded font-mono whitespace-nowrap">
+          ✏️ 跳轉
+        </button>
+      </div>
 
-1. **安裝專案依賴**
-   ```bash
-   npm install
-   ```
+      <!-- 檔案列表 -->
+      <div id="sftp-file-list" class="flex-1 overflow-y-auto p-2 sm:p-4 space-y-1 text-xs font-mono select-none"></div>
+    </div>
+  </div>
 
-2. **手動建立 KV 命名空間並配置 `wrangler.toml`**
-   在本機終端機執行以下 Wrangler 指令來建立 KV 空間：
-   ```bash
-   npx wrangler kv namespace create WEBSSH_KV
-   ```
-   請將此段配置手動複製並替換掉您專案根目錄下 `wrangler.toml` 檔案內原本的預留欄位。
+  <!-- 通用 SFTP 互動輸入彈窗 -->
+  <div id="sftp-prompt-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-[80]">
+    <div class="bg-slate-900 border border-slate-800 rounded-lg p-5 w-full max-w-sm shadow-2xl animate-fade-in">
+      <h3 id="sftp-prompt-title" class="text-sm font-bold text-slate-200 mb-3">請輸入</h3>
+      <input type="text" id="sftp-prompt-input" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono mb-4">
+      <div class="flex justify-end space-x-2">
+        <button onclick="closeSftpPrompt()" class="px-3 py-1.5 border border-slate-800 rounded text-slate-400 hover:bg-slate-800 text-xs transition">取消</button>
+        <button id="sftp-prompt-confirm-btn" class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-semibold transition">確認</button>
+      </div>
+    </div>
+  </div>
 
-3. **設定登入密碼（選填）**
-   推薦直接使用安全命令建立加密密碼，避免將明文密碼寫入代碼：
-   ```bash
-   npx wrangler secret put ADMIN_PASSWORD
-   ```
-   *（根據提示輸入您的安全密碼即可，此操作會將密碼直接以加密 Secret 格式上傳至 Cloudflare 端）*
+  <!-- 遠端檔案編輯器 Modal -->
+  <div id="editor-modal" class="fixed inset-0 bg-black/85 hidden items-center justify-center p-3 sm:p-4 z-[70]">
+    <div class="bg-slate-900 border border-slate-800 rounded-lg p-4 sm:p-6 w-full max-w-3xl h-[88vh] sm:h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-fade-in">
+      <div class="pb-2.5 border-b border-slate-800 flex justify-between items-center bg-slate-900">
+        <h3 id="editor-file-title" class="font-bold text-amber-400 text-xs sm:text-sm font-mono truncate max-w-[80%]">📝 編輯遠端檔案</h3>
+        <button onclick="closeFileEditor()" class="text-slate-400 hover:text-white text-xs">取消 ✕</button>
+      </div>
+      <textarea id="editor-textarea" class="flex-1 w-full bg-slate-950 border border-slate-800 rounded p-3 sm:p-4 text-xs font-mono text-slate-100 focus:outline-none focus:border-emerald-500 resize-none mt-3 whitespace-pre overflow-auto leading-relaxed" spellcheck="false"></textarea>
+      <div class="mt-3 flex justify-end space-x-3">
+        <button onclick="closeFileEditor()" class="px-3.5 py-1.5 border border-slate-800 rounded hover:bg-slate-800 text-xs transition">取消</button>
+        <button onclick="saveRemoteFile()" class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded text-white text-xs font-semibold transition flex items-center gap-1.5">
+          儲存變更
+        </button>
+      </div>
+    </div>
+  </div>
 
-4. **打包編譯與部署**
-   執行以下指令，系統會透過 `esbuild` 排除不相容的原生 binary 模組（並套用 `cpu-features` 模擬檔），隨後將程式碼發佈至 Cloudflare：
-   ```bash
-   npm run deploy
-   ```
+  <!-- 傳輸處理遮罩 -->
+  <div id="upload-overlay" class="fixed inset-0 bg-black/70 hidden items-center justify-center p-4 z-50">
+    <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 w-full max-w-sm shadow-2xl text-center">
+      <h3 class="text-lg font-bold text-emerald-400 mb-2">傳輸處理中 (SFTP)</h3>
+      <p id="upload-file-info" class="text-sm text-slate-300 font-mono truncate mb-4">filename.txt</p>
+      <div class="w-full bg-slate-800 rounded-full h-4 overflow-hidden mb-3">
+        <div id="upload-progress-bar" class="bg-emerald-500 h-full w-0 transition-all duration-150"></div>
+      </div>
+      <div class="flex justify-between text-xs text-slate-400 font-mono">
+        <span id="upload-progress-percent">處理中...</span>
+        <span id="upload-progress-size">0.00 / 0.00 MB</span>
+      </div>
+      <div class="mt-6 flex justify-center">
+        <button onclick="cancelUpload()" class="px-4 py-1.5 bg-rose-700 hover:bg-rose-600 rounded text-sm text-white font-medium transition">取消</button>
+      </div>
+    </div>
+  </div>
 
-## 🛡️ Cloudflare Zero Trust (Access) 安全加固詳細教學
-
-若要實現企業級的邊緣安全防護，極力建議您使用 Cloudflare 的 **Zero Trust (Access)** 來保護您的 WebSSH 專案。這能在外部請求觸發 Workers 與 KV 資料庫之前，強制對其進行一線身分驗證。
-
-### 📌 前提條件
-1. 您在 Cloudflare 上擁有一個已啟用的自訂網域（例如 `yourdomain.com`）。
-2. 已為此 Workers 綁定了自訂網域（在 Workers 控制台 -> `Settings` -> `Domains & Routes` -> `Add` -> 綁定如 `ssh.yourdomain.com`）。
-
-### 🛠️ 步驟 1：開啟 Zero Trust 控制台
-1. 登入 [Cloudflare 控制面板](https://dash.cloudflare.com/)。
-2. 在左側選單中，點擊 **「Zero Trust」**（若第一次進入，請按指示啟用免費訂閱計劃，支援最多 50 名使用者免費）。
-
-### 🛠️ 步驟 2：建立 Access 應用程式
-1. 在 Zero Trust 控制台左側選單，依序點擊 **「Access」** -> **「Applications」**。
-2. 點擊右上角的 **「Add an Application」（新增應用程式）**。
-3. 選擇 **「Self-hosted」（自我託管）** 類型。
-
-### 🛠️ 步驟 3：配置應用程式路徑
-1. **Application Name**：自訂一個名稱（如 `WebSSH Panel`）。
-2. **Session Duration**：保持預設，或自訂登入狀態有效期限。
-3. **Application Domain**（核心步驟）：
-   * **Subdomain**：輸入您的子網域（如 `ssh`）。
-   * **Domain**：選取您的自訂網域（如 `yourdomain.com`）。
-   * **Path**：保留空白即可（意即保護此子網域下的所有路徑，如 `ssh.yourdomain.com/*`）。
-4. 滾動到下方，點擊 **「Next」**。
-
-### 🛠️ 步驟 4：設定存取驗證策略 (Access Policy)
-1. **Policy Name**：自訂策略名稱（如 `限本人登入`）。
-2. **Action**：選擇 `Allow`。
-3. **Configure Rules (Include)**（設定允許的對象）：
-   * **Selector**：專區選取 **「Emails」**。
-   * **Value**：輸入您個人的 Email 電子郵件（例如 `yourname@gmail.com`）。
-4. 點擊 **「Next」**。
-
-### 🛠️ 步驟 5：設定 cookie 與完成
-1. 在最後一個「Setup」頁面，保持預設值不變。
-2. 點擊右下角的 **「Add Application」** 保存。
-
----
-
-### 🎉 防護效果測試
-現在，不論是您自己或是任何外部使用者，在瀏覽器輸入 `https://ssh.yourdomain.com` 時，都會自動跳轉至 **Cloudflare Access 安全登入頁面**，要求輸入電子郵件：
-1. 輸入您的 Email，Cloudflare 將發送一個 **一次性動態密碼 (OTP)** 至您的信箱。
-2. 輸入 OTP 通過驗證後，網頁才會順利載入您的 WebSSH 專案。
-3. **這是在網際網路最前線（邊緣節點）攔截惡意流量的安全防禦手段！**
-
-## 📝 關於 Cloudflare 網頁編輯器的「紅字錯誤」提示說明
-
-當您打開 Cloudflare Workers 網頁控制台的 **「Quick Edit（快速編輯）」** 線上代碼編輯器時，可能會在 `index.js`（即上傳的打包檔，約 22,000 行）看見數百個紅色或黃色的型別錯誤提示（例如：`Cannot find name 'Buffer'` 或 `Property 'performance' does not exist`）。
-
-* **原因**：控制台網頁編輯器底層使用的是簡化版的 Monaco 靜態檢查器。當它嘗試型別分析這份包含了 `ssh2` 與 Node.js 相容層（Polyfills）的超大型編譯產物時，會因為看不懂 Node.js 原生 API 而報錯。
-* **解決與影響**：這**完全不影響代碼的實際運行**，僅僅是線上編輯器前端的顯示充擾。本專案已在編譯腳本 `build.mjs` 中自動將 `// @ts-nocheck` 寫入檔案頂端。如果您在網頁編輯器中仍看見紅字，請**手動重新整理網頁編輯器分頁 (Ctrl + F5)** 以清除瀏覽器的檔案快取，紅字與驚嘆號便會隨之清除。
-
-## 🔒 安全性建議
-
-1. **啟用內建密碼**：強烈建議在生產環境中設定 `ADMIN_PASSWORD` 加密 Secret，這將同時啟用網頁門禁與後端 AES-GCM 零知識加密儲存。
-2. **Cloudflare Zero Trust / Cloudflare Access (雙重保障)**：
-   對於極高安全要求的用戶，除了設定 `ADMIN_PASSWORD`，還可以依據上方的 **Zero Trust 教學** 為專案網域設定一條 Access 存取策略，限定僅允許您信任的電子郵件才能存取本 WebSSH 頁面。
-
+  <script src="/app.js"></script>
+</body>
+</html>
 ````
 
-## File: src/index.js
+## File: src/crypto.js
 ````js
-import htmlContent from '../public/index.html';
-import appJs from 'client-js:../public/app.js'; 
-import vendorJs from 'vendor-js:client';
-import vendorCss from 'vendor-css:client';
-import { deriveKey, encryptText, decryptText, hashPassword, getExpectedToken, createQuickConnectToken, parseQuickConnectToken } from './crypto.js';
-import { handleSSHUpgrade } from './ssh.js';
-import { handleSFTPUpgrade } from './sftp.js';
+// 堆疊安全的 ArrayBuffer 轉 Base64 函數 (防範大檔案私鑰溢位)
+export function arrayBufferToBase64(buffer) {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
 
-const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.0';
+// 堆疊安全的 Base64 轉 ArrayBuffer 函數
+export function base64ToArrayBuffer(base64) {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
 
-// 🛡️ T-2: 邊緣 IP 限流輔助函式
-async function checkRateLimit(env, key, maxAttempts, decaySeconds) {
-  if (!env.WEBSSH_KV) return { allowed: true };
+// 根據管理密碼衍生對稱加密金鑰 (AES-GCM 256-bit)
+export async function deriveKey(adminPassword) {
+  const passwordBytes = new TextEncoder().encode(adminPassword);
+  const hash = await crypto.subtle.digest('SHA-256', passwordBytes);
+  return await crypto.subtle.importKey(
+    'raw',
+    hash,
+    { name: 'AES-GCM' },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
+// 加密明文字串
+export async function encryptText(text, key) {
+  if (text === undefined || text === null) return '';
+  const str = String(text);
+  const iv = crypto.getRandomValues(new Uint8Array(12)); // 12-byte IV 適用於 GCM
+  const encoded = new TextEncoder().encode(str);
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    encoded
+  );
+  const ivB64 = arrayBufferToBase64(iv);
+  const cipherB64 = arrayBufferToBase64(ciphertext);
+  return `${ivB64}:${cipherB64}`;
+}
+
+// 解密字串 (支援對舊明文數值/字串的向下相容)
+export async function decryptText(encryptedStr, key) {
+  if (encryptedStr === undefined || encryptedStr === null) return '';
+  const str = String(encryptedStr);
+  const parts = str.split(':');
+  if (parts.length !== 2) {
+    return str;
+  }
   try {
-    const current = await env.WEBSSH_KV.get(key);
-    const count = current ? parseInt(current, 10) : 0;
-    if (count >= maxAttempts) {
-      return { allowed: false, count };
-    }
-    await env.WEBSSH_KV.put(key, String(count + 1), { expirationTtl: decaySeconds });
-    return { allowed: true, count: count + 1 };
-  } catch (_) {
-    return { allowed: true };
+    const [ivB64, cipherB64] = parts;
+    const iv = new Uint8Array(base64ToArrayBuffer(ivB64));
+    const ciphertext = base64ToArrayBuffer(cipherB64);
+    const decrypted = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv },
+      key,
+      ciphertext
+    );
+    return new TextDecoder().decode(decrypted);
+  } catch (err) {
+    console.error("安全解密失敗:", err);
+    throw new Error("憑據解密失敗。");
   }
 }
 
-export default {
-  async fetch(request, env, ctx) {
-    const url = new URL(request.url);
-    const clientIp = request.headers.get('cf-connecting-ip') || 'unknown';
+// 使用 WebCrypto 計算 SHA-256 雜湊值（用於登入 Session Token 簽章）
+export async function hashPassword(password) {
+  const msgBuffer = new TextEncoder().encode(password);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
-    const adminPassword = env.ADMIN_PASSWORD;
-    const isAuthEnabled = typeof adminPassword === 'string' && adminPassword.length > 0;
+// 根據環境變數中的密碼加鹽計算預期 Token
+export async function getExpectedToken(adminPassword) {
+  return await hashPassword(adminPassword + "cf-webssh-salt-2026");
+}
 
-    const getCookie = (name) => {
-      const value = `; ${request.headers.get('Cookie') || ''}`;
-      const parts = value.split(`; ${name}=`);
-      if (parts.length === 2) return parts.pop().split(';').shift();
-      return null;
-    };
+// 建立臨時快速連線 Token (AES-GCM 加密，不寫入 KV 資料庫)
+export async function createQuickConnectToken(configData, adminPassword, isAuthEnabled) {
+  const jsonStr = JSON.stringify({
+    host: configData.host || '',
+    port: parseInt(configData.port) || 22,
+    username: configData.username || '',
+    password: configData.password || '',
+    privateKey: configData.privateKey || '',
+    ts: Date.now()
+  });
+  const secret = isAuthEnabled ? adminPassword : "cf-webssh-quick-connect-salt-2026";
+  const key = await deriveKey(secret);
+  const encrypted = await encryptText(jsonStr, key);
+  return `temp:${encrypted}`;
+}
 
-    const isAuthorized = async () => {
-      if (!isAuthEnabled) return true;
-      const token = getCookie('webssh_token');
-      if (!token) return false;
-      const expected = await getExpectedToken(adminPassword);
-      return token === expected;
-    };
-
-    // 公開路徑
-    const publicPaths = [
-      '/', '/index.html', '/app.js', '/vendor.js', '/vendor.css',
-      '/api/login', '/api/auth-check', '/api/logout'
-    ];
-    if (!publicPaths.includes(url.pathname)) {
-      if (!(await isAuthorized())) {
-        return new Response('Unauthorized', { status: 401 });
-      }
-    }
-
-    // 1. 靜態網頁與 Zero-CDN 資源交付
-    if (url.pathname === '/' || url.pathname === '/index.html') {
-      const parsedHtml = htmlContent
-        .replace('/app.js', `/app.js?v=${APP_VERSION}`)
-        .replace('/vendor.js', `/vendor.js?v=${APP_VERSION}`)
-        .replace('/vendor.css', `/vendor.css?v=${APP_VERSION}`);
-      return new Response(parsedHtml, {
-        headers: { 'Content-Type': 'text/html; charset=utf-8' },
-      });
-    }
-
-    if (url.pathname === '/app.js') {
-      return new Response(appJs, {
-        headers: { 'Content-Type': 'application/javascript; charset=utf-8' },
-      });
-    }
-
-    // 🚀 T-5: 100% 邊緣交付 xterm 核心與 CSS
-    if (url.pathname === '/vendor.js') {
-      return new Response(vendorJs, {
-        headers: { 
-          'Content-Type': 'application/javascript; charset=utf-8',
-          'Cache-Control': 'public, max-age=604800, immutable'
-        },
-      });
-    }
-
-    if (url.pathname === '/vendor.css') {
-      return new Response(vendorCss, {
-        headers: { 
-          'Content-Type': 'text/css; charset=utf-8',
-          'Cache-Control': 'public, max-age=604800, immutable'
-        },
-      });
-    }
-
-    // 1.2 API: 驗證狀態檢查
-    if (url.pathname === '/api/auth-check' && request.method === 'GET') {
-      const authorized = await isAuthorized();
-      return new Response(JSON.stringify({
-        required: isAuthEnabled,
-        authenticated: authorized,
-        version: APP_VERSION
-      }), {
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-
-    // 1.3 API: 登入驗證（🛡️ T-2: 加入暴力破解防護，5 次失敗封鎖 15 分鐘）
-    if (url.pathname === '/api/login' && request.method === 'POST') {
-      try {
-        const rlKey = `ratelimit:login:${clientIp}`;
-        const rlCheck = await checkRateLimit(env, rlKey, 5, 900);
-        if (!rlCheck.allowed) {
-          return new Response(JSON.stringify({ error: '密碼錯誤次數過多，此 IP 已被暫時封鎖 15 分鐘' }), {
-            status: 429,
-            headers: { 'Content-Type': 'application/json' }
-          });
-        }
-
-        const { password } = await request.json();
-        if (isAuthEnabled && password === adminPassword) {
-          if (env.WEBSSH_KV) await env.WEBSSH_KV.delete(rlKey);
-          const token = await getExpectedToken(adminPassword);
-          return new Response(JSON.stringify({ success: true }), {
-            headers: {
-              'Content-Type': 'application/json',
-              'Set-Cookie': `webssh_token=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=2592000`
-            }
-          });
-        }
-        return new Response(JSON.stringify({ error: '密碼錯誤' }), {
-          status: 401,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      } catch (err) {
-        return new Response(JSON.stringify({ error: err.message }), {
-          status: 500,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
-    }
-
-    // 1.4 API: 登出
-    if (url.pathname === '/api/logout' && request.method === 'POST') {
-      return new Response(JSON.stringify({ success: true }), {
-        headers: {
-          'Content-Type': 'application/json',
-          'Set-Cookie': 'webssh_token=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0'
-        }
-      });
-    }
-
-    // 1.5 API: 快速連線憑據生成（🛡️ T-2: 每分鐘限制 15 次）
-    if (url.pathname === '/api/quick-connect' && request.method === 'POST') {
-      try {
-        const rlKey = `ratelimit:quick:${clientIp}`;
-        const rlCheck = await checkRateLimit(env, rlKey, 15, 60);
-        if (!rlCheck.allowed) {
-          return new Response(JSON.stringify({ error: '連線建立請求過於頻繁，請稍候重試' }), {
-            status: 429,
-            headers: { 'Content-Type': 'application/json' }
-          });
-        }
-
-        const data = await request.json();
-        if (!data.host || !data.username) {
-          return new Response(JSON.stringify({ error: '缺少必要欄位' }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json' },
-          });
-        }
-        const tempId = await createQuickConnectToken(data, adminPassword, isAuthEnabled);
-        return new Response(JSON.stringify({ success: true, tempId }), {
-          headers: { 'Content-Type': 'application/json' },
-        });
-      } catch (err) {
-        return new Response(JSON.stringify({ error: err.message }), {
-          status: 500,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-    }
-
-    // 2. API: 伺服器連線列表
-    if (url.pathname === '/api/connections' && request.method === 'GET') {
-      try {
-        const list = await env.WEBSSH_KV.list({ prefix: 'connection:' });
-        const values = await Promise.all(list.keys.map(key => env.WEBSSH_KV.get(key.name)));
-        let connections = [];
-
-        let aesKey = null;
-        if (isAuthEnabled) aesKey = await deriveKey(adminPassword);
-
-        for (const val of values) {
-          if (val) {
-            const data = JSON.parse(val);
-            let decName = data.name || '';
-            let decHost = data.host || '';
-            let decPort = data.port || 22;
-            let decUsername = data.username || '';
-            let hasPrivateKey = false;
-
-            if (isAuthEnabled && aesKey) {
-              try {
-                decName = await decryptText(data.name, aesKey);
-                decHost = await decryptText(data.host, aesKey);
-                decPort = parseInt(await decryptText(data.port, aesKey)) || 22;
-                decUsername = await decryptText(data.username, aesKey);
-                const decPrivateKey = await decryptText(data.privateKey, aesKey);
-                hasPrivateKey = typeof decPrivateKey === 'string' && decPrivateKey.length > 0;
-              } catch (_) {
-                decName = data.name || '';
-                decHost = data.host || '';
-                decPort = parseInt(data.port) || 22;
-                decUsername = data.username || '';
-                hasPrivateKey = typeof data.privateKey === 'string' && data.privateKey.length > 0;
-              }
-            } else {
-              hasPrivateKey = typeof data.privateKey === 'string' && data.privateKey.length > 0;
-            }
-
-            connections.push({
-              id: data.id,
-              name: decName,
-              host: decHost,
-              port: decPort,
-              username: decUsername,
-              authType: hasPrivateKey ? 'key' : 'password',
-            });
-          }
-        }
-
-        const orderVal = await env.WEBSSH_KV.get('connections_order');
-        if (orderVal) {
-          try {
-            const orderArray = JSON.parse(orderVal);
-            connections.sort((a, b) => {
-              let idxA = orderArray.indexOf(a.id);
-              let idxB = orderArray.indexOf(b.id);
-              if (idxA === -1) idxA = 99999;
-              if (idxB === -1) idxB = 99999;
-              return idxA - idxB;
-            });
-          } catch (_) {}
-        }
-
-        return new Response(JSON.stringify(connections), {
-          headers: { 'Content-Type': 'application/json' },
-        });
-      } catch (err) {
-        return new Response(JSON.stringify({ error: err.message }), {
-          status: 500,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-    }
-
-    // 3. API: 新增/更新連線
-    if (url.pathname === '/api/connections' && request.method === 'POST') {
-      try {
-        const data = await request.json();
-        if (!data.name || !data.host || !data.username) {
-          return new Response(JSON.stringify({ error: '缺少必要欄位' }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json' },
-          });
-        }
-        const id = data.id || crypto.randomUUID();
-
-        let aesKey = null;
-        if (isAuthEnabled) aesKey = await deriveKey(adminPassword);
-
-        const existingVal = await env.WEBSSH_KV.get(`connection:${id}`);
-        let existingPlaintext = { name: '', host: '', port: 22, username: '', password: '', privateKey: '' };
-        if (existingVal) {
-          try {
-            const existingData = JSON.parse(existingVal);
-            if (isAuthEnabled && aesKey) {
-              existingPlaintext.name = await decryptText(existingData.name, aesKey);
-              existingPlaintext.host = await decryptText(existingData.host, aesKey);
-              existingPlaintext.port = parseInt(await decryptText(existingData.port, aesKey)) || 22;
-              existingPlaintext.username = await decryptText(existingData.username, aesKey);
-              existingPlaintext.password = await decryptText(existingData.password, aesKey);
-              existingPlaintext.privateKey = await decryptText(existingData.privateKey, aesKey);
-            } else {
-              existingPlaintext = existingData;
-            }
-          } catch (_) {}
-        }
-
-        const finalName = data.name !== undefined ? data.name : existingPlaintext.name;
-        const finalHost = data.host !== undefined ? data.host : existingPlaintext.host;
-        const finalPort = data.port !== undefined ? parseInt(data.port) : existingPlaintext.port;
-        const finalUsername = data.username !== undefined ? data.username : existingPlaintext.username;
-        const finalPassword = data.password !== undefined ? data.password : existingPlaintext.password;
-        const finalPrivateKey = data.privateKey !== undefined ? data.privateKey : existingPlaintext.privateKey;
-
-        let storedName = finalName;
-        let storedHost = finalHost;
-        let storedPort = String(finalPort);
-        let storedUsername = finalUsername;
-        let storedPassword = finalPassword;
-        let storedPrivateKey = finalPrivateKey;
-
-        if (isAuthEnabled && aesKey) {
-          storedName = await encryptText(finalName, aesKey);
-          storedHost = await encryptText(finalHost, aesKey);
-          storedPort = await encryptText(String(finalPort), aesKey);
-          storedUsername = await encryptText(finalUsername, aesKey);
-          storedPassword = await encryptText(finalPassword, aesKey);
-          storedPrivateKey = await encryptText(finalPrivateKey, aesKey);
-        }
-
-        await env.WEBSSH_KV.put(`connection:${id}`, JSON.stringify({
-          id,
-          name: storedName,
-          host: storedHost,
-          port: storedPort,
-          username: storedUsername,
-          password: storedPassword,
-          privateKey: storedPrivateKey,
-        }));
-
-        return new Response(JSON.stringify({ success: true, id }), {
-          headers: { 'Content-Type': 'application/json' },
-        });
-      } catch (err) {
-        return new Response(JSON.stringify({ error: err.message }), {
-          status: 500,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-    }
-
-    // 3.5 API: 排序
-    if (url.pathname === '/api/connections/order' && request.method === 'POST') {
-      try {
-        const { order } = await request.json();
-        if (Array.isArray(order)) {
-          await env.WEBSSH_KV.put('connections_order', JSON.stringify(order));
-          return new Response(JSON.stringify({ success: true }), {
-            headers: { 'Content-Type': 'application/json' }
-          });
-        }
-        return new Response(JSON.stringify({ error: '無效的排序格式' }), { status: 400 });
-      } catch (err) {
-        return new Response(JSON.stringify({ error: err.message }), { status: 500 });
-      }
-    }
-
-    // 3.6 - 3.8 API: 腳本管理
-    if (url.pathname === '/api/scripts' && request.method === 'GET') {
-      try {
-        const list = await env.WEBSSH_KV.list({ prefix: 'script:' });
-        const values = await Promise.all(list.keys.map(key => env.WEBSSH_KV.get(key.name)));
-        const scripts = values.filter(Boolean).map(v => JSON.parse(v));
-        return new Response(JSON.stringify(scripts), { headers: { 'Content-Type': 'application/json' } });
-      } catch (err) {
-        return new Response(JSON.stringify({ error: err.message }), { status: 500 });
-      }
-    }
-
-    if (url.pathname === '/api/scripts' && request.method === 'POST') {
-      try {
-        const data = await request.json();
-        const id = data.id || crypto.randomUUID();
-        await env.WEBSSH_KV.put(`script:${id}`, JSON.stringify({ id, name: data.name, content: data.content }));
-        return new Response(JSON.stringify({ success: true, id }), { headers: { 'Content-Type': 'application/json' } });
-      } catch (err) {
-        return new Response(JSON.stringify({ error: err.message }), { status: 500 });
-      }
-    }
-
-    if (url.pathname.startsWith('/api/scripts/') && request.method === 'DELETE') {
-      try {
-        const id = url.pathname.split('/').pop();
-        await env.WEBSSH_KV.delete(`script:${id}`);
-        return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
-      } catch (err) {
-        return new Response(JSON.stringify({ error: err.message }), { status: 500 });
-      }
-    }
-
-    // 4. API: 刪除連線
-    if (url.pathname.startsWith('/api/connections/') && request.method === 'DELETE') {
-      try {
-        const id = url.pathname.split('/').pop();
-        await env.WEBSSH_KV.delete(`connection:${id}`);
-        return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
-      } catch (err) {
-        return new Response(JSON.stringify({ error: err.message }), { status: 500 });
-      }
-    }
-
-    // 🚀 5. WebSocket: SSH 終端通道（T-1: 支援 In-Band 快速連線認證 /ssh/quick）
-    if (url.pathname.startsWith('/ssh/') && request.headers.get('Upgrade') === 'websocket') {
-      const endpoint = url.pathname.split('/').pop();
-      if (endpoint === 'quick') {
-        // T-1: 第一幀 In-Band 握手，零 URL 溢位風險
-        return handleSSHUpgrade(request, env, null, isAuthEnabled, adminPassword, deriveKey, decryptText, parseQuickConnectToken);
-      }
-
-      // 一般持久儲存連線
-      const connectionVal = await env.WEBSSH_KV.get(`connection:${endpoint}`);
-      if (!connectionVal) return new Response('連線配置不存在', { status: 404 });
-      const config = JSON.parse(connectionVal);
-
-      return handleSSHUpgrade(request, env, config, isAuthEnabled, adminPassword, deriveKey, decryptText, parseQuickConnectToken);
-    }
-
-    // 🚀 6. WebSocket: SFTP 通道（T-1: 支援 In-Band 快速連線認證 /sftp/quick）
-    if (url.pathname.startsWith('/sftp/') && request.headers.get('Upgrade') === 'websocket') {
-      const endpoint = url.pathname.split('/').pop();
-      if (endpoint === 'quick') {
-        // T-1: 第一幀 In-Band 握手
-        return handleSFTPUpgrade(request, env, null, isAuthEnabled, adminPassword, deriveKey, decryptText, parseQuickConnectToken);
-      }
-
-      // 一般持久儲存連線
-      const connectionVal = await env.WEBSSH_KV.get(`connection:${endpoint}`);
-      if (!connectionVal) return new Response('連線配置不存在', { status: 404 });
-      const config = JSON.parse(connectionVal);
-
-      return handleSFTPUpgrade(request, env, config, isAuthEnabled, adminPassword, deriveKey, decryptText, parseQuickConnectToken);
-    }
-
-    return new Response('Not Found', { status: 404 });
-  },
-};
+// 解析與解密臨時快速連線 Token
+export async function parseQuickConnectToken(token, adminPassword, isAuthEnabled) {
+  if (!token || !token.startsWith('temp:')) return null;
+  const encryptedStr = token.substring(5);
+  const secret = isAuthEnabled ? adminPassword : "cf-webssh-quick-connect-salt-2026";
+  const key = await deriveKey(secret);
+  const decrypted = await decryptText(encryptedStr, key);
+  const data = JSON.parse(decrypted);
+  
+  // 24 小時有效期限檢查
+  if (Date.now() - data.ts > 86400000) {
+    throw new Error("快速連線 Token 已過期");
+  }
+  data.isPlaintext = true; // 標記此配置已為解密後的明文
+  return data;
+}
 
 ````
 
@@ -2965,128 +2404,530 @@ export async function handleSFTPUpgrade(request, env, config, isAuthEnabled, adm
 
 ````
 
-## File: src/crypto.js
+## File: src/index.js
 ````js
-// 堆疊安全的 ArrayBuffer 轉 Base64 函數 (防範大檔案私鑰溢位)
-export function arrayBufferToBase64(buffer) {
-  let binary = '';
-  const bytes = new Uint8Array(buffer);
-  const len = bytes.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
+import htmlContent from '../public/index.html';
+import appJs from 'client-js:../public/app.js'; 
+import vendorJs from 'vendor-js:client';
+import vendorCss from 'vendor-css:client';
+import { deriveKey, encryptText, decryptText, hashPassword, getExpectedToken, createQuickConnectToken, parseQuickConnectToken } from './crypto.js';
+import { handleSSHUpgrade } from './ssh.js';
+import { handleSFTPUpgrade } from './sftp.js';
 
-// 堆疊安全的 Base64 轉 ArrayBuffer 函數
-export function base64ToArrayBuffer(base64) {
-  const binaryString = atob(base64);
-  const len = binaryString.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes.buffer;
-}
+const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.0';
 
-// 根據管理密碼衍生對稱加密金鑰 (AES-GCM 256-bit)
-export async function deriveKey(adminPassword) {
-  const passwordBytes = new TextEncoder().encode(adminPassword);
-  const hash = await crypto.subtle.digest('SHA-256', passwordBytes);
-  return await crypto.subtle.importKey(
-    'raw',
-    hash,
-    { name: 'AES-GCM' },
-    false,
-    ['encrypt', 'decrypt']
-  );
-}
-
-// 加密明文字串
-export async function encryptText(text, key) {
-  if (text === undefined || text === null) return '';
-  const str = String(text);
-  const iv = crypto.getRandomValues(new Uint8Array(12)); // 12-byte IV 適用於 GCM
-  const encoded = new TextEncoder().encode(str);
-  const ciphertext = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv },
-    key,
-    encoded
-  );
-  const ivB64 = arrayBufferToBase64(iv);
-  const cipherB64 = arrayBufferToBase64(ciphertext);
-  return `${ivB64}:${cipherB64}`;
-}
-
-// 解密字串 (支援對舊明文數值/字串的向下相容)
-export async function decryptText(encryptedStr, key) {
-  if (encryptedStr === undefined || encryptedStr === null) return '';
-  const str = String(encryptedStr);
-  const parts = str.split(':');
-  if (parts.length !== 2) {
-    return str;
-  }
+// 🛡️ T-2: 邊緣 IP 限流輔助函式
+async function checkRateLimit(env, key, maxAttempts, decaySeconds) {
+  if (!env.WEBSSH_KV) return { allowed: true };
   try {
-    const [ivB64, cipherB64] = parts;
-    const iv = new Uint8Array(base64ToArrayBuffer(ivB64));
-    const ciphertext = base64ToArrayBuffer(cipherB64);
-    const decrypted = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv },
-      key,
-      ciphertext
-    );
-    return new TextDecoder().decode(decrypted);
-  } catch (err) {
-    console.error("安全解密失敗:", err);
-    throw new Error("憑據解密失敗。");
+    const current = await env.WEBSSH_KV.get(key);
+    const count = current ? parseInt(current, 10) : 0;
+    if (count >= maxAttempts) {
+      return { allowed: false, count };
+    }
+    await env.WEBSSH_KV.put(key, String(count + 1), { expirationTtl: decaySeconds });
+    return { allowed: true, count: count + 1 };
+  } catch (_) {
+    return { allowed: true };
   }
 }
 
-// 使用 WebCrypto 計算 SHA-256 雜湊值（用於登入 Session Token 簽章）
-export async function hashPassword(password) {
-  const msgBuffer = new TextEncoder().encode(password);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    const clientIp = request.headers.get('cf-connecting-ip') || 'unknown';
 
-// 根據環境變數中的密碼加鹽計算預期 Token
-export async function getExpectedToken(adminPassword) {
-  return await hashPassword(adminPassword + "cf-webssh-salt-2026");
-}
+    const adminPassword = env.ADMIN_PASSWORD;
+    const isAuthEnabled = typeof adminPassword === 'string' && adminPassword.length > 0;
 
-// 建立臨時快速連線 Token (AES-GCM 加密，不寫入 KV 資料庫)
-export async function createQuickConnectToken(configData, adminPassword, isAuthEnabled) {
-  const jsonStr = JSON.stringify({
-    host: configData.host || '',
-    port: parseInt(configData.port) || 22,
-    username: configData.username || '',
-    password: configData.password || '',
-    privateKey: configData.privateKey || '',
-    ts: Date.now()
-  });
-  const secret = isAuthEnabled ? adminPassword : "cf-webssh-quick-connect-salt-2026";
-  const key = await deriveKey(secret);
-  const encrypted = await encryptText(jsonStr, key);
-  return `temp:${encrypted}`;
-}
+    const getCookie = (name) => {
+      const value = `; ${request.headers.get('Cookie') || ''}`;
+      const parts = value.split(`; ${name}=`);
+      if (parts.length === 2) return parts.pop().split(';').shift();
+      return null;
+    };
 
-// 解析與解密臨時快速連線 Token
-export async function parseQuickConnectToken(token, adminPassword, isAuthEnabled) {
-  if (!token || !token.startsWith('temp:')) return null;
-  const encryptedStr = token.substring(5);
-  const secret = isAuthEnabled ? adminPassword : "cf-webssh-quick-connect-salt-2026";
-  const key = await deriveKey(secret);
-  const decrypted = await decryptText(encryptedStr, key);
-  const data = JSON.parse(decrypted);
-  
-  // 24 小時有效期限檢查
-  if (Date.now() - data.ts > 86400000) {
-    throw new Error("快速連線 Token 已過期");
+    const isAuthorized = async () => {
+      if (!isAuthEnabled) return true;
+      const token = getCookie('webssh_token');
+      if (!token) return false;
+      const expected = await getExpectedToken(adminPassword);
+      return token === expected;
+    };
+
+    // 公開路徑
+    const publicPaths = [
+      '/', '/index.html', '/app.js', '/vendor.js', '/vendor.css',
+      '/api/login', '/api/auth-check', '/api/logout'
+    ];
+    if (!publicPaths.includes(url.pathname)) {
+      if (!(await isAuthorized())) {
+        return new Response('Unauthorized', { status: 401 });
+      }
+    }
+
+    // 1. 靜態網頁與 Zero-CDN 資源交付
+    if (url.pathname === '/' || url.pathname === '/index.html') {
+      const parsedHtml = htmlContent
+        .replace('/app.js', `/app.js?v=${APP_VERSION}`)
+        .replace('/vendor.js', `/vendor.js?v=${APP_VERSION}`)
+        .replace('/vendor.css', `/vendor.css?v=${APP_VERSION}`);
+      return new Response(parsedHtml, {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      });
+    }
+
+    if (url.pathname === '/app.js') {
+      return new Response(appJs, {
+        headers: { 'Content-Type': 'application/javascript; charset=utf-8' },
+      });
+    }
+
+    // 🚀 T-5: 100% 邊緣交付 xterm 核心與 CSS
+    if (url.pathname === '/vendor.js') {
+      return new Response(vendorJs, {
+        headers: { 
+          'Content-Type': 'application/javascript; charset=utf-8',
+          'Cache-Control': 'public, max-age=604800, immutable'
+        },
+      });
+    }
+
+    if (url.pathname === '/vendor.css') {
+      return new Response(vendorCss, {
+        headers: { 
+          'Content-Type': 'text/css; charset=utf-8',
+          'Cache-Control': 'public, max-age=604800, immutable'
+        },
+      });
+    }
+
+    // 1.2 API: 驗證狀態檢查
+    if (url.pathname === '/api/auth-check' && request.method === 'GET') {
+      const authorized = await isAuthorized();
+      return new Response(JSON.stringify({
+        required: isAuthEnabled,
+        authenticated: authorized,
+        version: APP_VERSION
+      }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // 1.3 API: 登入驗證（🛡️ T-2: 加入暴力破解防護，5 次失敗封鎖 15 分鐘）
+    if (url.pathname === '/api/login' && request.method === 'POST') {
+      try {
+        const rlKey = `ratelimit:login:${clientIp}`;
+        const rlCheck = await checkRateLimit(env, rlKey, 5, 900);
+        if (!rlCheck.allowed) {
+          return new Response(JSON.stringify({ error: '密碼錯誤次數過多，此 IP 已被暫時封鎖 15 分鐘' }), {
+            status: 429,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        const { password } = await request.json();
+        if (isAuthEnabled && password === adminPassword) {
+          if (env.WEBSSH_KV) await env.WEBSSH_KV.delete(rlKey);
+          const token = await getExpectedToken(adminPassword);
+          return new Response(JSON.stringify({ success: true }), {
+            headers: {
+              'Content-Type': 'application/json',
+              'Set-Cookie': `webssh_token=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=2592000`
+            }
+          });
+        }
+        return new Response(JSON.stringify({ error: '密碼錯誤' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
+    // 1.4 API: 登出
+    if (url.pathname === '/api/logout' && request.method === 'POST') {
+      return new Response(JSON.stringify({ success: true }), {
+        headers: {
+          'Content-Type': 'application/json',
+          'Set-Cookie': 'webssh_token=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0'
+        }
+      });
+    }
+
+    // 1.5 API: 快速連線憑據生成（🛡️ T-2: 每分鐘限制 15 次）
+    if (url.pathname === '/api/quick-connect' && request.method === 'POST') {
+      try {
+        const rlKey = `ratelimit:quick:${clientIp}`;
+        const rlCheck = await checkRateLimit(env, rlKey, 15, 60);
+        if (!rlCheck.allowed) {
+          return new Response(JSON.stringify({ error: '連線建立請求過於頻繁，請稍候重試' }), {
+            status: 429,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        const data = await request.json();
+        if (!data.host || !data.username) {
+          return new Response(JSON.stringify({ error: '缺少必要欄位' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        const tempId = await createQuickConnectToken(data, adminPassword, isAuthEnabled);
+        return new Response(JSON.stringify({ success: true, tempId }), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
+    // 2. API: 伺服器連線列表
+    if (url.pathname === '/api/connections' && request.method === 'GET') {
+      try {
+        const list = await env.WEBSSH_KV.list({ prefix: 'connection:' });
+        const values = await Promise.all(list.keys.map(key => env.WEBSSH_KV.get(key.name)));
+        let connections = [];
+
+        let aesKey = null;
+        if (isAuthEnabled) aesKey = await deriveKey(adminPassword);
+
+        for (const val of values) {
+          if (val) {
+            const data = JSON.parse(val);
+            let decName = data.name || '';
+            let decHost = data.host || '';
+            let decPort = data.port || 22;
+            let decUsername = data.username || '';
+            let hasPrivateKey = false;
+
+            if (isAuthEnabled && aesKey) {
+              try {
+                decName = await decryptText(data.name, aesKey);
+                decHost = await decryptText(data.host, aesKey);
+                decPort = parseInt(await decryptText(data.port, aesKey)) || 22;
+                decUsername = await decryptText(data.username, aesKey);
+                const decPrivateKey = await decryptText(data.privateKey, aesKey);
+                hasPrivateKey = typeof decPrivateKey === 'string' && decPrivateKey.length > 0;
+              } catch (_) {
+                decName = data.name || '';
+                decHost = data.host || '';
+                decPort = parseInt(data.port) || 22;
+                decUsername = data.username || '';
+                hasPrivateKey = typeof data.privateKey === 'string' && data.privateKey.length > 0;
+              }
+            } else {
+              hasPrivateKey = typeof data.privateKey === 'string' && data.privateKey.length > 0;
+            }
+
+            connections.push({
+              id: data.id,
+              name: decName,
+              host: decHost,
+              port: decPort,
+              username: decUsername,
+              authType: hasPrivateKey ? 'key' : 'password',
+            });
+          }
+        }
+
+        const orderVal = await env.WEBSSH_KV.get('connections_order');
+        if (orderVal) {
+          try {
+            const orderArray = JSON.parse(orderVal);
+            connections.sort((a, b) => {
+              let idxA = orderArray.indexOf(a.id);
+              let idxB = orderArray.indexOf(b.id);
+              if (idxA === -1) idxA = 99999;
+              if (idxB === -1) idxB = 99999;
+              return idxA - idxB;
+            });
+          } catch (_) {}
+        }
+
+        return new Response(JSON.stringify(connections), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
+    // 3. API: 新增/更新連線
+    if (url.pathname === '/api/connections' && request.method === 'POST') {
+      try {
+        const data = await request.json();
+        if (!data.name || !data.host || !data.username) {
+          return new Response(JSON.stringify({ error: '缺少必要欄位' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        const id = data.id || crypto.randomUUID();
+
+        let aesKey = null;
+        if (isAuthEnabled) aesKey = await deriveKey(adminPassword);
+
+        const existingVal = await env.WEBSSH_KV.get(`connection:${id}`);
+        let existingPlaintext = { name: '', host: '', port: 22, username: '', password: '', privateKey: '' };
+        if (existingVal) {
+          try {
+            const existingData = JSON.parse(existingVal);
+            if (isAuthEnabled && aesKey) {
+              existingPlaintext.name = await decryptText(existingData.name, aesKey);
+              existingPlaintext.host = await decryptText(existingData.host, aesKey);
+              existingPlaintext.port = parseInt(await decryptText(existingData.port, aesKey)) || 22;
+              existingPlaintext.username = await decryptText(existingData.username, aesKey);
+              existingPlaintext.password = await decryptText(existingData.password, aesKey);
+              existingPlaintext.privateKey = await decryptText(existingData.privateKey, aesKey);
+            } else {
+              existingPlaintext = existingData;
+            }
+          } catch (_) {}
+        }
+
+        const finalName = data.name !== undefined ? data.name : existingPlaintext.name;
+        const finalHost = data.host !== undefined ? data.host : existingPlaintext.host;
+        const finalPort = data.port !== undefined ? parseInt(data.port) : existingPlaintext.port;
+        const finalUsername = data.username !== undefined ? data.username : existingPlaintext.username;
+        const finalPassword = data.password !== undefined ? data.password : existingPlaintext.password;
+        const finalPrivateKey = data.privateKey !== undefined ? data.privateKey : existingPlaintext.privateKey;
+
+        let storedName = finalName;
+        let storedHost = finalHost;
+        let storedPort = String(finalPort);
+        let storedUsername = finalUsername;
+        let storedPassword = finalPassword;
+        let storedPrivateKey = finalPrivateKey;
+
+        if (isAuthEnabled && aesKey) {
+          storedName = await encryptText(finalName, aesKey);
+          storedHost = await encryptText(finalHost, aesKey);
+          storedPort = await encryptText(String(finalPort), aesKey);
+          storedUsername = await encryptText(finalUsername, aesKey);
+          storedPassword = await encryptText(finalPassword, aesKey);
+          storedPrivateKey = await encryptText(finalPrivateKey, aesKey);
+        }
+
+        await env.WEBSSH_KV.put(`connection:${id}`, JSON.stringify({
+          id,
+          name: storedName,
+          host: storedHost,
+          port: storedPort,
+          username: storedUsername,
+          password: storedPassword,
+          privateKey: storedPrivateKey,
+        }));
+
+        return new Response(JSON.stringify({ success: true, id }), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
+    // 3.5 API: 排序
+    if (url.pathname === '/api/connections/order' && request.method === 'POST') {
+      try {
+        const { order } = await request.json();
+        if (Array.isArray(order)) {
+          await env.WEBSSH_KV.put('connections_order', JSON.stringify(order));
+          return new Response(JSON.stringify({ success: true }), {
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        return new Response(JSON.stringify({ error: '無效的排序格式' }), { status: 400 });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), { status: 500 });
+      }
+    }
+
+    // 3.6 - 3.8 API: 腳本管理
+    if (url.pathname === '/api/scripts' && request.method === 'GET') {
+      try {
+        const list = await env.WEBSSH_KV.list({ prefix: 'script:' });
+        const values = await Promise.all(list.keys.map(key => env.WEBSSH_KV.get(key.name)));
+        const scripts = values.filter(Boolean).map(v => JSON.parse(v));
+        return new Response(JSON.stringify(scripts), { headers: { 'Content-Type': 'application/json' } });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), { status: 500 });
+      }
+    }
+
+    if (url.pathname === '/api/scripts' && request.method === 'POST') {
+      try {
+        const data = await request.json();
+        const id = data.id || crypto.randomUUID();
+        await env.WEBSSH_KV.put(`script:${id}`, JSON.stringify({ id, name: data.name, content: data.content }));
+        return new Response(JSON.stringify({ success: true, id }), { headers: { 'Content-Type': 'application/json' } });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), { status: 500 });
+      }
+    }
+
+    if (url.pathname.startsWith('/api/scripts/') && request.method === 'DELETE') {
+      try {
+        const id = url.pathname.split('/').pop();
+        await env.WEBSSH_KV.delete(`script:${id}`);
+        return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), { status: 500 });
+      }
+    }
+
+    // 4. API: 刪除連線
+    if (url.pathname.startsWith('/api/connections/') && request.method === 'DELETE') {
+      try {
+        const id = url.pathname.split('/').pop();
+        await env.WEBSSH_KV.delete(`connection:${id}`);
+        return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), { status: 500 });
+      }
+    }
+
+    // 🚀 5. WebSocket: SSH 終端通道（T-1: 支援 In-Band 快速連線認證 /ssh/quick）
+    if (url.pathname.startsWith('/ssh/') && request.headers.get('Upgrade') === 'websocket') {
+      const endpoint = url.pathname.split('/').pop();
+      if (endpoint === 'quick') {
+        // T-1: 第一幀 In-Band 握手，零 URL 溢位風險
+        return handleSSHUpgrade(request, env, null, isAuthEnabled, adminPassword, deriveKey, decryptText, parseQuickConnectToken);
+      }
+
+      // 一般持久儲存連線
+      const connectionVal = await env.WEBSSH_KV.get(`connection:${endpoint}`);
+      if (!connectionVal) return new Response('連線配置不存在', { status: 404 });
+      const config = JSON.parse(connectionVal);
+
+      return handleSSHUpgrade(request, env, config, isAuthEnabled, adminPassword, deriveKey, decryptText, parseQuickConnectToken);
+    }
+
+    // 🚀 6. WebSocket: SFTP 通道（T-1: 支援 In-Band 快速連線認證 /sftp/quick）
+    if (url.pathname.startsWith('/sftp/') && request.headers.get('Upgrade') === 'websocket') {
+      const endpoint = url.pathname.split('/').pop();
+      if (endpoint === 'quick') {
+        // T-1: 第一幀 In-Band 握手
+        return handleSFTPUpgrade(request, env, null, isAuthEnabled, adminPassword, deriveKey, decryptText, parseQuickConnectToken);
+      }
+
+      // 一般持久儲存連線
+      const connectionVal = await env.WEBSSH_KV.get(`connection:${endpoint}`);
+      if (!connectionVal) return new Response('連線配置不存在', { status: 404 });
+      const config = JSON.parse(connectionVal);
+
+      return handleSFTPUpgrade(request, env, config, isAuthEnabled, adminPassword, deriveKey, decryptText, parseQuickConnectToken);
+    }
+
+    return new Response('Not Found', { status: 404 });
+  },
+};
+
+````
+
+## File: package.json
+````json
+{
+  "name": "cf-webssh",
+  "version": "2.2.0",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-search": "^0.15.0",
+    "@xterm/addon-web-links": "^0.11.0",
+    "ssh2": "^1.15.0",
+    "xterm": "^5.3.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.20.0",
+    "wrangler": "^3.50.0"
   }
-  data.isPlaintext = true; // 標記此配置已為解密後的明文
-  return data;
 }
+
+````
+
+## File: .github/workflows/deploy.yml
+````yml
+name: Deploy to Cloudflare Workers
+
+on:
+  push:
+    branches:
+      - main # 當代碼推送到 main 分支時觸發自動部署
+  workflow_dispatch: # 支援在 GitHub 網頁上手動點擊觸發部署
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24 # 使用 Node 24 避免棄用警告
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Auto-detect or Create KV Namespace
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          echo "正在偵測 Cloudflare KV 命名空間..."
+          
+          # 1. 取得現有的 KV 列表 (將輸出重新導向以確保資訊安全)
+          KV_LIST=$(npx wrangler kv namespace list 2>/dev/null)
+          
+          # 2. 篩選名稱中是否已存在包含 WEBSSH_KV 的 KV ID
+          KV_ID=$(echo "$KV_LIST" | jq -r '.[] | select(.title | contains("WEBSSH_KV")) | .id' | head -n 1)
+          
+          # 3. 如果不存在，則自動建立一個
+          if [ -z "$KV_ID" ] || [ "$KV_ID" = "null" ]; then
+            echo "未偵測到 WEBSSH_KV 命名空間，正在自動為您建立..."
+            # 建立新的命名空間並隱藏詳細輸出
+            npx wrangler kv namespace create WEBSSH_KV >/dev/null
+            
+            # 重新獲取新建後的列表並擷取 ID
+            KV_LIST_NEW=$(npx wrangler kv namespace list 2>/dev/null)
+            KV_ID=$(echo "$KV_LIST_NEW" | jq -r '.[] | select(.title | contains("WEBSSH_KV")) | .id' | head -n 1)
+          else
+            echo "已成功偵測到現有的 KV 命名空間，正在進行綁定..."
+          fi
+          
+          # 4. 安全檢查
+          if [ -z "$KV_ID" ] || [ "$KV_ID" = "null" ]; then
+            echo "錯誤：無法取得或建立 KV 命名空間。"
+            exit 1
+          fi
+          
+          # 5. 動態將取得的 KV ID 替換寫入 wrangler.toml (但不輸出內容至 log)
+          sed -i "s/KV_NAMESPACE_ID_PLACEHOLDER/$KV_ID/g" wrangler.toml
+          echo "KV 綁定已設定完成。"
+
+      - name: Deploy to Cloudflare
+        run: npm run deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
 ````
 
@@ -3171,70 +3012,222 @@ jobs:
 
 ````
 
-## File: .github/workflows/deploy.yml
-````yml
-name: Deploy to Cloudflare Workers
+## File: mocks/cpu-features.js
+````js
+// Mock cpu-features for worker build
+const mock = () => ({});
+mock.default = mock;
+export default mock;
 
-on:
-  push:
-    branches:
-      - main # 當代碼推送到 main 分支時觸發自動部署
-  workflow_dispatch: # 支援在 GitHub 網頁上手動點擊觸發部署
+````
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+## File: README.md
+````md
+# cf-webssh
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24 # 使用 Node 24 避免棄用警告
+一個基於 Cloudflare Workers 平台建置的輕量級、高度安全、完全模組化解耦的互動式 WebSSH 終端機與 SFTP 遠端檔案管理工作台。
 
-      - name: Install Dependencies
-        run: npm install
+本專案利用 Cloudflare 原生 TCP 接口（透過相容性標誌 `nodejs_compat` 啟用 `cloudflare:sockets`）與遠端主機建立安全的 SSH 通道，並在瀏覽器前端使用 `xterm.js` 提供互動性終端、視覺化 SFTP 檔案管理器、遠端檔案線上編輯器，以及本地安全密鑰生成器。
 
-      - name: Auto-detect or Create KV Namespace
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: |
-          echo "正在偵測 Cloudflare KV 命名空間..."
-          
-          # 1. 取得現有的 KV 列表 (將輸出重新導向以確保資訊安全)
-          KV_LIST=$(npx wrangler kv namespace list 2>/dev/null)
-          
-          # 2. 篩選名稱中是否已存在包含 WEBSSH_KV 的 KV ID
-          KV_ID=$(echo "$KV_LIST" | jq -r '.[] | select(.title | contains("WEBSSH_KV")) | .id' | head -n 1)
-          
-          # 3. 如果不存在，則自動建立一個
-          if [ -z "$KV_ID" ] || [ "$KV_ID" = "null" ]; then
-            echo "未偵測到 WEBSSH_KV 命名空間，正在自動為您建立..."
-            # 建立新的命名空間並隱藏詳細輸出
-            npx wrangler kv namespace create WEBSSH_KV >/dev/null
-            
-            # 重新獲取新建後的列表並擷取 ID
-            KV_LIST_NEW=$(npx wrangler kv namespace list 2>/dev/null)
-            KV_ID=$(echo "$KV_LIST_NEW" | jq -r '.[] | select(.title | contains("WEBSSH_KV")) | .id' | head -n 1)
-          else
-            echo "已成功偵測到現有的 KV 命名空間，正在進行綁定..."
-          fi
-          
-          # 4. 安全檢查
-          if [ -z "$KV_ID" ] || [ "$KV_ID" = "null" ]; then
-            echo "錯誤：無法取得或建立 KV 命名空間。"
-            exit 1
-          fi
-          
-          # 5. 動態將取得的 KV ID 替換寫入 wrangler.toml (但不輸出內容至 log)
-          sed -i "s/KV_NAMESPACE_ID_PLACEHOLDER/$KV_ID/g" wrangler.toml
-          echo "KV 綁定已設定完成。"
+## 🎯 專案特點
 
-      - name: Deploy to Cloudflare
-        run: npm run deploy
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+- **無伺服器架構**：完全依賴 Cloudflare Workers 邊緣網路，無需部署與維護傳統的 WebSSH 後端伺服器（如 Bastion、Guacamole 等）。
+- **解耦與模組化分檔管理**：
+  - 本地開發專案採用高維護性分檔結構：安全加密（`crypto.js`）、終端通訊（`ssh.js`）、SFTP 管理（`sftp.js`）、主路由入口（`index.js`），以及前端頁面（`index.html`）與核心控制指令碼（`app.js`）。
+  - **極速載入**：在構建編譯時（`build.mjs`），透過自訂的 esbuild 插件，自動將前端 JavaScript 程式碼轉化為靜態字串併入 Worker 的部署檔中，使您的專案既具有本地開發的整潔度，又擁有極佳的邊緣端載入速度。
+- **動態版本號同步**：
+  - 主畫面標題旁與登入介面會自動展示當前的系統版本號（例如 `v2.0.0`），該版本號完全由構建指令碼在打包編譯時，自動、動態地與 `package.json` 內的 `"version"` 欄位進行實時同步。
+- **全庫零知識（Zero-Knowledge）端到端對稱加密**：
+  - 當設定管理員密碼（環境變數 `ADMIN_PASSWORD`）時，系統會自動在 Worker 記憶體中利用您的密碼雜湊衍生出 256 位元的對稱金鑰。
+  - 主機連線欄位（包括主機 IP/域名、主機名稱、端口、使用者名稱、連線密碼與私鑰）在寫入 Cloudflare KV 前，**皆全數透過原生 WebCrypto API 執行強度的 AES-GCM-256 對稱加密**。
+  - **安全性**：即便 Cloudflare 帳戶或 KV 資料庫整庫被導出洩漏，攻擊者也完全無法得知您管理的 VPS 名稱、IP 位置與登入帳密。
+  - **向下相容**：系統具備智慧判定，若偵測到未加密的舊有資料會自動以明文格式讀取，不影響您原先已儲存的配置。您只需在網頁上對舊主機點選「編輯 -> 儲存」，系統便會自動將其無損升級為加密狀態。
+- **一體化 SFTP 遠端檔案管理器**：
+  - 前端頂部整合為單一 **「📁 SFTP 檔案管理」** 彈窗視窗，可直接在終端機畫面上方彈出，體驗一體化。
+  - **📝 遠端檔案線上編輯器**：點選文字格式檔案（如 `.conf`、`.sh`、`.env`、`.json`、`.yml` 等）旁的 **「編輯」** 按鈕，右側會直接拉出一個大面積的代碼編輯器彈窗，修改後點擊「儲存變更」即可即時覆寫寫入 VPS，免去使用終端機 `vim` / `nano` 的繁瑣步驟。
+  - **「類 Windows」麵包屑導航**：自動將目前的絕對路徑分割為可點選的級聯節點（如 `🏠 / root / apps`），點選即可快速跨目錄跳轉。
+  - **檔案瀏覽與導航**：點選資料夾可直接進入，支援目錄深層導航、向上返回與重新整理。
+  - **檔案下載與完整性流控制（Backpressure）**：採用 Web 串流控制，發送一塊數據確認一塊，絕不撐爆 Worker 記憶體，支援大檔案的安全流式下載。
+  - **拖放與手動上傳**：支援將電腦檔案直接拖曳至終端機畫面上傳，或點選視窗內的「上傳檔案」手動選取，自動上傳至目前瀏覽的目錄中。
+  - **檔案刪除**：支援一鍵永久刪除遠端 VPS 上的檔案或空資料夾。
+- **內建多算法安全 SSH 密鑰生成器**：
+  - 主畫面 Header 新增獨立的 **「🔑 密鑰生成」** 彈窗。完全由瀏覽器端 WebCrypto 引擎本地生成，保證極限物理安全。
+  - **支援四種主流算法**：`ED25519` (高安全、推薦)、`RSA-2048` (高相容)、`RSA-4096` (極高安全)、`ECDSA P-256` (橢圓曲線)。
+  - **標準 OpenSSH 公鑰序列化編譯**：內建 OpenSSH 公鑰字節序列化解析器，自動將 DER 編碼編譯成可以直接寫入 Linux `authorized_keys` 的標準 `ssh-rsa`、`ecdsa-sha2-nistp256` 或 `ssh-ed25519` 等明文字串，一鍵複製使用。
+- **自訂一鍵常用腳本與即時注入**：
+  - 主畫面新增 **「📜 常用腳本」** 管理彈窗，提供視覺化新增與刪除自訂腳本（如系統更新、Docker 狀態檢視等）。
+  - **一鍵終端機注入**：當您在 SSH 連線中，點擊頂部 **「📜 常用腳本...」** 下拉選單，對應的指令將即時輸入到您的終端中並自動送出執行。
+  - **明文儲存**：常用腳本指令在 KV 中以純文字 JSON 格式儲存，便於您在 Cloudflare 後台直接檢視。
+- **免延遲樂觀更新機制 (Optimistic UI Updates)**：
+  - 由於 Cloudflare KV 的寫入具有「最終一致性」的延遲（寫入後通常需要 1~3 秒才會在全球節點生效），原先新增腳本後可能無法立刻在畫面上重新整理出來。
+  - 本專案實作了**樂觀更新技術**：前端在內存中維護最新的腳本快取，新增/刪除時會在 0 毫秒內立刻反應在介面上，背景則由異步靜默向後端 KV 進行儲存，帶來極速、無延遲的流暢體驗。
+- **原生 HTML5 卡片拖曳排序**：
+  - 主畫面的伺服器卡片具備拖拽手把（右上角三橫線圖示），滑鼠指過去會自動變更為抓取手勢（`cursor-grab`）。
+  - **拖拽與保存**：您可以隨意拖動卡片重新排序，落點處會具備高亮邊框指示。當放開滑鼠時，新順序陣列會自動異步儲存至 KV 上的 `connections_order` 清單中，永久保存您的自訂卡片順序。
+- **優雅的系統圖示與 LOGO**：
+  - **網站 Favicon**：採用動態嵌入的 SVG Data-URI 技術，完美替換分頁標籤上的地球預設圖標。
+  - **主視覺 LOGO**：主畫面與登入介面皆整合了極具現代感的終端機游標圖示（`>_`）。
+- **優化的 xterm.js 終端**：
+  - **自動聚焦 (Auto Focus)**：連線載入完成後自動鎖定焦點，無需手動用滑鼠點擊即可直接開始打字輸入。
+  - **視窗尺寸動態同步**：支援瀏覽器視窗縮放時，自動向遠端虛擬終端（Pseudo-terminal, PTY）發送 `resize` 訊號。
+- **Cloudflare Workers 專屬相容性適配**：
+  - 針對 Workers 執行環境底層 BoringSSL 在計算 **X25519 DH 共享金鑰** 時的限制，主動排除 `curve25519` 相關的金鑰交換演算法（KEX），改用 NIST 標準曲線（如 `ecdh-sha2-nistp256`）或有限域 Diffie-Hellman 演算法進行握手。
+  - 針對 Workers 的 `node:crypto` 串流解密不完整支援 AEAD 模式（如 `chacha20-poly1305`、`aes-gcm`）而會拋出 `No auth tag provided` 的限制，主動在握手階段限制僅協商使用 **CTR 計數器模式** 與 **CBC 模式**（如 `aes256-ctr`），配合獨立的 HMAC 校驗（如 `hmac-sha2-256`），確保資料傳輸穩定不中斷。
+
+## 📁 專案目錄結構
+
+```text
+cf-webssh/
+├── wrangler.toml              # Cloudflare Wrangler 配置文件
+├── package.json               # 項目與套件依賴配置
+├── build.mjs                  # esbuild 自訂構建與打包指令碼 (含解耦與自動版號注入插件)
+├── mocks/
+│   └── cpu-features.js        # cpu-features 機制模擬器
+├── public/
+│   ├── index.html             # 前台純淨 HTML 排版模版
+│   └── app.js                 # 獨立的前台 JavaScript 核心控制器
+└── src/
+    ├── crypto.js              # 獨立的對稱加密模組 (AES-GCM-256)
+    ├── ssh.js                 # 獨立的 SSH 終端通訊模組
+    ├── sftp.js                # 獨立的 SFTP 管理通訊模組
+    └── index.js               # 主入口路由分發與資產服務器
+```
+
+## ⚙️ 系統需求
+
+- [Cloudflare 帳戶](https://dash.cloudflare.com/)
+- [Node.js](https://nodejs.org/) (建議使用 v18.0.0 以上之版本)
+
+## 🚀 部署指南
+
+### 方法 A：透過 GitHub Actions 自動部署（推薦）
+
+本專案已內建完整的 CI/CD 自動化工作流。當您將專案推送到 GitHub 的 `main` 分支時，系統將會**全自動處理 KV 命名空間**：
+
+1. **fork 本項目**。
+2. 在 GitHub 專案的 `Settings -> Secrets and variables -> Actions` 中，新增一個名為 `CLOUDFLARE_API_TOKEN` 的 Secret（此 Token 需具備編輯 Workers 與 KV 命名空間的權限）。
+3. 將代碼推送至 `main` 分支。
+4. GitHub Actions 工作流（`.github/workflows/deploy.yml`）會自動偵測您的 Cloudflare 帳戶中是否已存在 `WEBSSH_KV` 命名空間。若不存在，將自動為您建立，並**自動動態填入** `wrangler.toml` 中的 `KV_NAMESPACE_ID_PLACEHOLDER`，最後完成編譯與部署。您無需進行任何手動文件修改。
+
+> 💡 **如何在使用 GitHub Actions 部署時設置登入密碼與 AES 加密金鑰？**
+> 請直接登入 [Cloudflare Dashboard](https://dash.cloudflare.com/)，進入您的 Workers 項目，點選 `Settings` -> `Variables` -> `Environment Variables`，手動新增變數 `ADMIN_PASSWORD`。為了安全起見，請務必將其儲存類型設為 **Encrypt (Secret)**。此密碼一經儲存，除了用於登入外，還會自動在後端作為 AES-GCM 金鑰。
+
+---
+
+### 方法 B：從本機手動部署
+
+如果您不使用 GitHub Actions，而是選擇直接從本機進行手動部署：
+
+1. **安裝專案依賴**
+   ```bash
+   npm install
+   ```
+
+2. **手動建立 KV 命名空間並配置 `wrangler.toml`**
+   在本機終端機執行以下 Wrangler 指令來建立 KV 空間：
+   ```bash
+   npx wrangler kv namespace create WEBSSH_KV
+   ```
+   請將此段配置手動複製並替換掉您專案根目錄下 `wrangler.toml` 檔案內原本的預留欄位。
+
+3. **設定登入密碼（選填）**
+   推薦直接使用安全命令建立加密密碼，避免將明文密碼寫入代碼：
+   ```bash
+   npx wrangler secret put ADMIN_PASSWORD
+   ```
+   *（根據提示輸入您的安全密碼即可，此操作會將密碼直接以加密 Secret 格式上傳至 Cloudflare 端）*
+
+4. **打包編譯與部署**
+   執行以下指令，系統會透過 `esbuild` 排除不相容的原生 binary 模組（並套用 `cpu-features` 模擬檔），隨後將程式碼發佈至 Cloudflare：
+   ```bash
+   npm run deploy
+   ```
+
+## 🛡️ Cloudflare Zero Trust (Access) 安全加固詳細教學
+
+若要實現企業級的邊緣安全防護，極力建議您使用 Cloudflare 的 **Zero Trust (Access)** 來保護您的 WebSSH 專案。這能在外部請求觸發 Workers 與 KV 資料庫之前，強制對其進行一線身分驗證。
+
+### 📌 前提條件
+1. 您在 Cloudflare 上擁有一個已啟用的自訂網域（例如 `yourdomain.com`）。
+2. 已為此 Workers 綁定了自訂網域（在 Workers 控制台 -> `Settings` -> `Domains & Routes` -> `Add` -> 綁定如 `ssh.yourdomain.com`）。
+
+### 🛠️ 步驟 1：開啟 Zero Trust 控制台
+1. 登入 [Cloudflare 控制面板](https://dash.cloudflare.com/)。
+2. 在左側選單中，點擊 **「Zero Trust」**（若第一次進入，請按指示啟用免費訂閱計劃，支援最多 50 名使用者免費）。
+
+### 🛠️ 步驟 2：建立 Access 應用程式
+1. 在 Zero Trust 控制台左側選單，依序點擊 **「Access」** -> **「Applications」**。
+2. 點擊右上角的 **「Add an Application」（新增應用程式）**。
+3. 選擇 **「Self-hosted」（自我託管）** 類型。
+
+### 🛠️ 步驟 3：配置應用程式路徑
+1. **Application Name**：自訂一個名稱（如 `WebSSH Panel`）。
+2. **Session Duration**：保持預設，或自訂登入狀態有效期限。
+3. **Application Domain**（核心步驟）：
+   * **Subdomain**：輸入您的子網域（如 `ssh`）。
+   * **Domain**：選取您的自訂網域（如 `yourdomain.com`）。
+   * **Path**：保留空白即可（意即保護此子網域下的所有路徑，如 `ssh.yourdomain.com/*`）。
+4. 滾動到下方，點擊 **「Next」**。
+
+### 🛠️ 步驟 4：設定存取驗證策略 (Access Policy)
+1. **Policy Name**：自訂策略名稱（如 `限本人登入`）。
+2. **Action**：選擇 `Allow`。
+3. **Configure Rules (Include)**（設定允許的對象）：
+   * **Selector**：專區選取 **「Emails」**。
+   * **Value**：輸入您個人的 Email 電子郵件（例如 `yourname@gmail.com`）。
+4. 點擊 **「Next」**。
+
+### 🛠️ 步驟 5：設定 cookie 與完成
+1. 在最後一個「Setup」頁面，保持預設值不變。
+2. 點擊右下角的 **「Add Application」** 保存。
+
+---
+
+### 🎉 防護效果測試
+現在，不論是您自己或是任何外部使用者，在瀏覽器輸入 `https://ssh.yourdomain.com` 時，都會自動跳轉至 **Cloudflare Access 安全登入頁面**，要求輸入電子郵件：
+1. 輸入您的 Email，Cloudflare 將發送一個 **一次性動態密碼 (OTP)** 至您的信箱。
+2. 輸入 OTP 通過驗證後，網頁才會順利載入您的 WebSSH 專案。
+3. **這是在網際網路最前線（邊緣節點）攔截惡意流量的安全防禦手段！**
+
+## 📝 關於 Cloudflare 網頁編輯器的「紅字錯誤」提示說明
+
+當您打開 Cloudflare Workers 網頁控制台的 **「Quick Edit（快速編輯）」** 線上代碼編輯器時，可能會在 `index.js`（即上傳的打包檔，約 22,000 行）看見數百個紅色或黃色的型別錯誤提示（例如：`Cannot find name 'Buffer'` 或 `Property 'performance' does not exist`）。
+
+* **原因**：控制台網頁編輯器底層使用的是簡化版的 Monaco 靜態檢查器。當它嘗試型別分析這份包含了 `ssh2` 與 Node.js 相容層（Polyfills）的超大型編譯產物時，會因為看不懂 Node.js 原生 API 而報錯。
+* **解決與影響**：這**完全不影響代碼的實際運行**，僅僅是線上編輯器前端的顯示充擾。本專案已在編譯腳本 `build.mjs` 中自動將 `// @ts-nocheck` 寫入檔案頂端。如果您在網頁編輯器中仍看見紅字，請**手動重新整理網頁編輯器分頁 (Ctrl + F5)** 以清除瀏覽器的檔案快取，紅字與驚嘆號便會隨之清除。
+
+## 🔒 安全性建議
+
+1. **啟用內建密碼**：強烈建議在生產環境中設定 `ADMIN_PASSWORD` 加密 Secret，這將同時啟用網頁門禁與後端 AES-GCM 零知識加密儲存。
+2. **Cloudflare Zero Trust / Cloudflare Access (雙重保障)**：
+   對於極高安全要求的用戶，除了設定 `ADMIN_PASSWORD`，還可以依據上方的 **Zero Trust 教學** 為專案網域設定一條 Access 存取策略，限定僅允許您信任的電子郵件才能存取本 WebSSH 頁面。
+
+````
+
+## File: wrangler.toml
+````toml
+name = "cf-webssh"
+main = "dist/index.js"
+compatibility_date = "2026-01-01"
+compatibility_flags = [ "nodejs_compat" ]
+
+[[kv_namespaces]]
+binding = "WEBSSH_KV"
+id = "KV_NAMESPACE_ID_PLACEHOLDER"
+
+[vars]
+# ==========================================
+# 管理登入密碼（選填）
+# ==========================================
+# 若留空或註解此行，系統將不啟用登入頁面，任何人皆能讀取/連線您的伺服器。
+#
+# 建議生產環境保護：
+# 本地測試時可於此處直接填寫明文密碼，
+# 但發佈至生產環境時，強烈建議不要寫入此toml檔，
+# 而是直接在網頁控制台設定「Secret」或使用命令：
+# $ npx wrangler secret put ADMIN_PASSWORD
+# ==========================================
+# ADMIN_PASSWORD = "your_secure_password"
 
 ````
 
